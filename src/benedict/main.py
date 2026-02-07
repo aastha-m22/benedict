@@ -18,6 +18,7 @@ from benedict.protocols import (
     create_conversation_repository,
 )
 from benedict.slack_app import create_slack_app
+from benedict.workspace import WorkspaceManager
 
 # Configure logging first
 logging.basicConfig(
@@ -130,12 +131,28 @@ def main():
     data_dir = _get_data_dir()
     logger.info(f"Using data directory: {data_dir}")
     
+    # Create workspace manager
+    workspaces_dir = os.environ.get("BENEDICT_WORKSPACES_DIR", str(data_dir / "workspaces"))
+    copy_mode = os.environ.get("BENEDICT_WORKSPACE_COPY_MODE", "symlink")
+    workspace_manager = WorkspaceManager(workspaces_dir=workspaces_dir, copy_mode=copy_mode)
+    logger.info(f"✅ Workspace manager initialized (workspaces_dir={workspaces_dir}, copy_mode={copy_mode})")
+    
     # Create semantic indexer (optional - falls back to keyword matching if None)
     semantic_indexer = None
     try:
         # Use configurable path for ChromaDB (defaults to data_dir/.chroma_db)
         chroma_db_path = os.environ.get("BENEDICT_CHROMA_DB_DIR", str(data_dir / ".chroma_db"))
-        semantic_indexer = create_semantic_indexer(provider="chromadb", persist_directory=chroma_db_path)
+        # Create metadata generator for semantic indexer
+        from benedict.metadata import MetadataGenerator
+        from benedict.protocols.repo_change_detector import create_repo_change_detector
+        metadata_generator = MetadataGenerator()
+        change_detector = create_repo_change_detector(detector_type="auto")
+        semantic_indexer = create_semantic_indexer(
+            provider="chromadb",
+            persist_directory=chroma_db_path,
+            metadata_generator=metadata_generator,
+            change_detector=change_detector
+        )
         logger.info(f"✅ Semantic indexer initialized (ChromaDB at {chroma_db_path})")
     except Exception as e:
         logger.warning(f"⚠️ Semantic indexer not available: {e}")
@@ -153,7 +170,8 @@ def main():
         llm=llm,
         repo_reader=repo_reader,
         semantic_indexer=semantic_indexer,
-        conversation_repository=conversation_repository
+        conversation_repository=conversation_repository,
+        workspace_manager=workspace_manager
     )
     
     # Initialize state file if it doesn't exist

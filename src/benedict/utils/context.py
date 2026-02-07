@@ -3,6 +3,7 @@
 Pure functions for building context from repository files using semantic search.
 """
 import logging
+from pathlib import Path
 from typing import List, Optional
 from benedict.protocols import RepoReader, SemanticIndexer
 
@@ -14,7 +15,10 @@ def build_context(
     question: str,
     repo_reader: RepoReader,
     semantic_indexer: Optional[SemanticIndexer] = None,
-    max_tokens: int = 4000
+    max_tokens: int = 4000,
+    workspace_path: Optional[Path] = None,
+    metadata_reader=None,
+    action_logger=None
 ) -> str:
     """Build relevant context for question using semantic search.
     
@@ -24,11 +28,43 @@ def build_context(
         repo_reader: Repository reader instance
         semantic_indexer: Optional semantic indexer for intelligent file selection
         max_tokens: Maximum tokens for context
+        workspace_path: Optional workspace path for metadata and action log
+        metadata_reader: Optional metadata reader for including metadata in context
+        action_logger: Optional action logger for including recent actions
         
     Returns:
         Formatted context string
     """
     parts = []
+    
+    # Include recent actions if available
+    if action_logger and workspace_path:
+        try:
+            recent_actions = action_logger.get_recent_actions(limit=5)
+            if recent_actions:
+                action_summary = "Recent workspace actions:\n"
+                for action in recent_actions:
+                    action_summary += f"- {action.get('action')}: {action.get('resource', 'N/A')} ({action.get('timestamp', '')[:10]})\n"
+                parts.append(action_summary)
+        except Exception as e:
+            logger.warning(f"Error reading action log: {e}")
+    
+    # Include metadata summary if available
+    if metadata_reader and workspace_path:
+        try:
+            repo_metadata_path = workspace_path / repo
+            metadata = metadata_reader.read_metadata(repo_metadata_path)
+            if metadata:
+                metadata_summary = f"# Repository Metadata: {repo}\n"
+                metadata_summary += f"Summary: {metadata.get('summary', 'N/A')}\n"
+                metadata_summary += f"Purpose: {metadata.get('purpose', 'N/A')}\n"
+                if metadata.get('files'):
+                    metadata_summary += f"\nKey files:\n"
+                    for file_info in metadata.get('files', [])[:5]:
+                        metadata_summary += f"- {file_info.get('name')}: {file_info.get('purpose', 'N/A')}\n"
+                parts.append(metadata_summary)
+        except Exception as e:
+            logger.warning(f"Error reading metadata: {e}")
     
     # Always include README if it exists
     try:
@@ -43,13 +79,24 @@ def build_context(
     # Use semantic search if available, otherwise fall back to keyword matching
     if semantic_indexer:
         try:
-            # Ensure repository is indexed
+            # Ensure repository is indexed (incremental update if already indexed)
             if not semantic_indexer.is_indexed(repo):
                 logger.info(f"Indexing repository {repo} for semantic search...")
-                semantic_indexer.index_repository(repo, repo_reader)
+                semantic_indexer.index_repository(repo, repo_reader, workspace_path=workspace_path)
+            else:
+                # Incremental update: check for changes since last index
+                # For now, we'll do a full update on each query (can be optimized later)
+                # In the future, we could track last_index_time and use update_index()
+                logger.debug(f"Repository {repo} already indexed, skipping reindex (use update_index() for incremental updates)")
             
-            # Perform semantic search
-            results = semantic_indexer.search(repo, question, top_k=5)
+            # Perform semantic search with metadata boosting if available
+            results = semantic_indexer.search(
+                repo, 
+                question, 
+                top_k=5,
+                workspace_path=workspace_path,
+                metadata_reader=metadata_reader
+            )
             
             # Group results by file and get full file content
             seen_files = set()

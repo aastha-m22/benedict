@@ -4,6 +4,8 @@ Uses sentence-transformers for embeddings and ChromaDB for vector storage.
 """
 import logging
 import hashlib
+import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 from sentence_transformers import SentenceTransformer
@@ -12,6 +14,8 @@ from chromadb.config import Settings
 
 from benedict.protocols.semantic_indexer import SemanticIndexer
 from benedict.protocols.repo_reader import RepoReader
+from benedict.protocols.repo_change_detector import RepoChangeDetector
+from benedict.metadata import MetadataGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +23,18 @@ logger = logging.getLogger(__name__)
 class ChromaDBSemanticIndexer:
     """ChromaDB-based semantic indexer for code repositories."""
     
-    def __init__(self, persist_directory: str = "./.chroma_db"):
+    def __init__(
+        self,
+        persist_directory: str = "./.chroma_db",
+        metadata_generator: Optional[MetadataGenerator] = None,
+        change_detector: Optional[RepoChangeDetector] = None
+    ):
         """Initialize ChromaDB semantic indexer.
         
         Args:
             persist_directory: Directory to persist ChromaDB data
+            metadata_generator: Optional metadata generator for creating METADATA overlays
+            change_detector: Optional change detector for git-based incremental updates
         """
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(exist_ok=True)
@@ -41,6 +52,13 @@ class ChromaDBSemanticIndexer:
         
         # Collection name is based on repo name, created on-demand
         self.collections: Dict[str, chromadb.Collection] = {}
+        
+        # Initialize metadata generator
+        self.metadata_generator = metadata_generator or MetadataGenerator()
+        
+        # Store change detector for incremental updates
+        self.change_detector = change_detector
+        
         logger.info(f"Initialized ChromaDBSemanticIndexer with persist_dir={persist_directory}")
     
     def _get_collection(self, repo: str) -> chromadb.Collection:
@@ -68,21 +86,38 @@ class ChromaDBSemanticIndexer:
         
         return self.collections[collection_name]
     
-    def index_repository(self, repo: str, repo_reader: RepoReader) -> None:
+    def index_repository(
+        self,
+        repo: str,
+        repo_reader: RepoReader,
+        workspace_path: Optional[Path] = None,
+        force: bool = False
+    ) -> None:
         """Index a repository for semantic search.
         
         Args:
             repo: Repository identifier
             repo_reader: RepoReader instance to read files
+            workspace_path: Optional workspace path for generating metadata overlays
+            force: If True, reindex even if already indexed (default: False)
         """
         collection = self._get_collection(repo)
         
         # Check if already indexed (has documents)
-        if collection.count() > 0:
-            logger.info(f"Repository {repo} already indexed ({collection.count()} chunks)")
+        if collection.count() > 0 and not force:
+            logger.info(f"Repository {repo} already indexed ({collection.count()} chunks), skipping full reindex.")
+            # Still generate/update metadata if workspace_path provided
+            if workspace_path:
+                self._generate_metadata_overlays(repo, repo_reader, workspace_path)
             return
         
-        logger.info(f"Indexing repository {repo}...")
+        logger.info(f"Indexing repository {repo} (force={force})...")
+        
+        # Clear existing index if force reindexing
+        if force and collection.count() > 0:
+            logger.info(f"Clearing existing index for {repo}")
+            self.client.delete_collection(name=collection.name)
+            collection = self._get_collection(repo)  # Recreate empty collection
         
         # Get all files
         try:
@@ -94,12 +129,250 @@ class ChromaDBSemanticIndexer:
         # Filter to code/text files (exclude binaries, large files)
         code_files = self._filter_code_files(all_files)
         
-        # Process files in chunks
+        # Index files
+        self._index_files(repo, repo_reader, collection, code_files, workspace_path=workspace_path)
+        
+        # Generate metadata overlays if workspace_path provided
+        if workspace_path:
+            self._generate_metadata_overlays(repo, repo_reader, workspace_path)
+    
+    def search(
+        self, 
+        repo: str, 
+        query: str, 
+        top_k: int = 5,
+        workspace_path: Optional[Path] = None,
+        metadata_reader=None
+    ) -> List[Dict[str, Any]]:
+        """Search repository using semantic similarity.
+        
+        Args:
+            repo: Repository identifier
+            query: Search query/question
+            top_k: Number of results to return
+            workspace_path: Optional workspace path for metadata-based boosting
+            metadata_reader: Optional metadata reader for directory-level search
+            
+        Returns:
+            List of dicts with keys: 'file_path', 'content', 'score'
+        """
+        collection = self._get_collection(repo)
+        
+        if collection.count() == 0:
+            logger.warning(f"Repository {repo} not indexed yet")
+            return []
+        
+        # Stage 1: Find relevant directories via metadata search (if available)
+        relevant_dir_paths = set()
+        if metadata_reader and workspace_path:
+            try:
+                metadata_matches = metadata_reader.search_metadata(workspace_path, query)
+                for match in metadata_matches:
+                    # Store relative paths from repo root
+                    rel_path = match["path"]
+                    if rel_path.startswith(repo + "/"):
+                        rel_path = rel_path[len(repo) + 1:]
+                    relevant_dir_paths.add(rel_path)
+                    # Also add parent directories
+                    path_parts = rel_path.split("/")
+                    for i in range(1, len(path_parts)):
+                        relevant_dir_paths.add("/".join(path_parts[:i]))
+                logger.debug(f"Found {len(relevant_dir_paths)} relevant directories via metadata search")
+            except Exception as e:
+                logger.debug(f"Error in metadata search: {e}")
+        
+        # Embed query
+        query_embedding = self.embedding_model.encode([query])[0]
+        
+        # Search with higher top_k if we have metadata boosting (to allow re-ranking)
+        search_top_k = top_k * 2 if relevant_dir_paths else top_k
+        
+        # Search
+        results = collection.query(
+            query_embeddings=[query_embedding.tolist()],
+            n_results=search_top_k
+        )
+        
+        # Format results and apply metadata-based boosting
+        formatted_results = []
+        if results['documents'] and len(results['documents'][0]) > 0:
+            for i, doc in enumerate(results['documents'][0]):
+                metadata = results['metadatas'][0][i] if results['metadatas'] else {}
+                distance = results['distances'][0][i] if results['distances'] else 0.0
+                
+                # Convert distance to similarity score (lower distance = higher similarity)
+                score = 1.0 / (1.0 + distance)
+                
+                file_path = metadata.get('file_path', 'unknown')
+                
+                # Boost score if file is in a relevant directory
+                if relevant_dir_paths:
+                    file_dir = str(Path(file_path).parent)
+                    # Check if file's directory or any parent matches relevant directories
+                    for rel_dir in relevant_dir_paths:
+                        if file_dir == rel_dir or file_dir.startswith(rel_dir + "/"):
+                            score *= 1.2  # 20% boost for files in relevant directories
+                            logger.debug(f"Boosted score for {file_path} (in relevant directory: {rel_dir})")
+                            break
+                
+                formatted_results.append({
+                    'file_path': file_path,
+                    'content': doc,
+                    'score': score
+                })
+        
+        # Re-sort by boosted score and return top_k
+        formatted_results.sort(key=lambda x: x['score'], reverse=True)
+        formatted_results = formatted_results[:top_k]
+        
+        logger.debug(f"Semantic search for '{query}' in {repo} returned {len(formatted_results)} results")
+        return formatted_results
+    
+    def update_index(
+        self,
+        repo: str,
+        repo_reader: RepoReader,
+        workspace_path: Optional[Path] = None,
+        since: Optional[datetime] = None
+    ) -> None:
+        """Incrementally update index with new/changed content.
+        
+        Args:
+            repo: Repository identifier
+            repo_reader: RepoReader instance to read files
+            workspace_path: Optional workspace path for generating metadata overlays
+            since: Optional datetime to only index files modified since this time
+        """
+        collection = self._get_collection(repo)
+        
+        if not workspace_path:
+            logger.warning("Workspace path not provided, cannot perform incremental update.")
+            self.index_repository(repo, repo_reader, workspace_path=workspace_path, force=True)
+            return
+        
+        repo_full_path = workspace_path / repo
+        if not repo_full_path.exists():
+            logger.warning(f"Repository path {repo_full_path} does not exist, cannot update index.")
+            return
+        
+        # Use git-based detection if available, otherwise fall back to file modification time
+        if self.change_detector and self.change_detector.supports_git(repo_full_path):
+            self._update_index_git(repo, repo_reader, collection, repo_full_path, since)
+        else:
+            self._update_index_file_mtime(repo, repo_reader, collection, repo_full_path, since)
+        
+        # Generate/update metadata overlays
+        if workspace_path:
+            self._generate_metadata_overlays(repo, repo_reader, workspace_path)
+    
+    def _update_index_git(
+        self,
+        repo: str,
+        repo_reader: RepoReader,
+        collection: chromadb.Collection,
+        repo_full_path: Path,
+        since: Optional[datetime]
+    ) -> None:
+        """Update index using git change detection."""
+        logger.info(f"Updating index for {repo} using git change detection (since={since})...")
+        
+        changes = self.change_detector.detect_changes(repo_full_path, since=since)
+        added_files = changes.get("added", [])
+        modified_files = changes.get("modified", [])
+        deleted_files = changes.get("deleted", [])
+        
+        if not (added_files or modified_files or deleted_files):
+            logger.info(f"No new git changes detected for {repo} since {since}")
+            return
+        
+        logger.info(f"Git changes: {len(added_files)} added, {len(modified_files)} modified, {len(deleted_files)} deleted")
+        
+        # Remove deleted and modified files from index
+        files_to_remove = deleted_files + modified_files
+        if files_to_remove:
+            # Get all chunks for these files
+            try:
+                results = collection.get(where={"repo": repo, "file_path": {"$in": files_to_remove}})
+                ids_to_delete = results.get('ids', [])
+                if ids_to_delete:
+                    collection.delete(ids=ids_to_delete)
+                    logger.info(f"Removed {len(ids_to_delete)} chunks for deleted/modified files from {repo}")
+            except Exception as e:
+                logger.warning(f"Error removing old chunks: {e}")
+        
+        # Index added and modified files
+        files_to_index = self._filter_code_files(added_files + modified_files)
+        if files_to_index:
+            self._index_files(repo, repo_reader, collection, files_to_index, workspace_path=repo_full_path.parent)
+        else:
+            logger.info(f"No new code files to index for {repo}")
+    
+    def _update_index_file_mtime(
+        self,
+        repo: str,
+        repo_reader: RepoReader,
+        collection: chromadb.Collection,
+        repo_full_path: Path,
+        since: Optional[datetime]
+    ) -> None:
+        """Update index using file modification time detection."""
+        logger.info(f"Updating index for {repo} using file modification time (since={since})...")
+        
+        if not since:
+            logger.warning("No 'since' timestamp provided for file modification time detection, performing full reindex.")
+            self.index_repository(repo, repo_reader, workspace_path=repo_full_path.parent, force=True)
+            return
+        
+        all_files = repo_reader.list_files(repo)
+        modified_files = []
+        for file_path_str in all_files:
+            file_path = repo_full_path / file_path_str
+            if file_path.is_file():
+                try:
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if file_mtime > since:
+                        modified_files.append(file_path_str)
+                except (OSError, ValueError) as e:
+                    logger.debug(f"Error checking file {file_path}: {e}")
+                    continue
+        
+        if not modified_files:
+            logger.info(f"No new or modified files detected for {repo} since {since}")
+            return
+        
+        logger.info(f"Detected {len(modified_files)} modified files for {repo}")
+        
+        # Remove old chunks for modified files
+        try:
+            results = collection.get(where={"repo": repo, "file_path": {"$in": modified_files}})
+            ids_to_delete = results.get('ids', [])
+            if ids_to_delete:
+                collection.delete(ids=ids_to_delete)
+                logger.info(f"Removed {len(ids_to_delete)} chunks for modified files from {repo}")
+        except Exception as e:
+            logger.warning(f"Error removing old chunks: {e}")
+        
+        # Index modified files
+        files_to_index = self._filter_code_files(modified_files)
+        if files_to_index:
+            self._index_files(repo, repo_reader, collection, files_to_index, workspace_path=repo_full_path.parent)
+        else:
+            logger.info(f"No new code files to index for {repo}")
+    
+    def _index_files(
+        self,
+        repo: str,
+        repo_reader: RepoReader,
+        collection: chromadb.Collection,
+        files: List[str],
+        workspace_path: Optional[Path] = None
+    ) -> None:
+        """Helper method to index a list of files."""
         documents = []
         metadatas = []
         ids = []
         
-        for file_path in code_files:
+        for file_path in files:
             try:
                 content = repo_reader.read_file(repo, file_path)
                 
@@ -107,6 +380,13 @@ class ChromaDBSemanticIndexer:
                 if len(content) > 100000:  # ~100KB
                     logger.debug(f"Skipping large file: {file_path}")
                     continue
+                
+                # Enhance content with file metadata if available
+                if workspace_path:
+                    file_metadata_text = self._get_file_metadata_text(file_path, workspace_path, repo)
+                    if file_metadata_text:
+                        content = file_metadata_text + "\n\n" + content
+                        logger.debug(f"Enhanced {file_path} with metadata for indexing")
                 
                 # Split large files into chunks
                 chunks = self._chunk_file_content(file_path, content)
@@ -133,65 +413,29 @@ class ChromaDBSemanticIndexer:
         logger.info(f"Generating embeddings for {len(documents)} chunks...")
         embeddings = self.embedding_model.encode(documents, show_progress_bar=False)
         
-        # Add to collection
-        collection.add(
-            embeddings=embeddings.tolist(),
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids
-        )
+        # Batch add to collection (ChromaDB has max batch size limit of ~5461)
+        batch_size = 5000  # Safe batch size (under ChromaDB's limit)
+        total_batches = (len(documents) + batch_size - 1) // batch_size
         
-        logger.info(f"Indexed {len(documents)} chunks from {len(code_files)} files for {repo}")
-    
-    def search(
-        self, 
-        repo: str, 
-        query: str, 
-        top_k: int = 5
-    ) -> List[Dict[str, Any]]:
-        """Search repository using semantic similarity.
-        
-        Args:
-            repo: Repository identifier
-            query: Search query/question
-            top_k: Number of results to return
+        for batch_idx in range(total_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, len(documents))
             
-        Returns:
-            List of dicts with keys: 'file_path', 'content', 'score'
-        """
-        collection = self._get_collection(repo)
+            batch_documents = documents[start_idx:end_idx]
+            batch_embeddings = embeddings[start_idx:end_idx]
+            batch_metadatas = metadatas[start_idx:end_idx]
+            batch_ids = ids[start_idx:end_idx]
+            
+            collection.add(
+                embeddings=batch_embeddings.tolist(),
+                documents=batch_documents,
+                metadatas=batch_metadatas,
+                ids=batch_ids
+            )
+            
+            logger.debug(f"Added batch {batch_idx + 1}/{total_batches} ({len(batch_documents)} chunks)")
         
-        if collection.count() == 0:
-            logger.warning(f"Repository {repo} not indexed yet")
-            return []
-        
-        # Embed query
-        query_embedding = self.embedding_model.encode([query])[0]
-        
-        # Search
-        results = collection.query(
-            query_embeddings=[query_embedding.tolist()],
-            n_results=top_k
-        )
-        
-        # Format results
-        formatted_results = []
-        if results['documents'] and len(results['documents'][0]) > 0:
-            for i, doc in enumerate(results['documents'][0]):
-                metadata = results['metadatas'][0][i] if results['metadatas'] else {}
-                distance = results['distances'][0][i] if results['distances'] else 0.0
-                
-                # Convert distance to similarity score (lower distance = higher similarity)
-                score = 1.0 / (1.0 + distance)
-                
-                formatted_results.append({
-                    'file_path': metadata.get('file_path', 'unknown'),
-                    'content': doc,
-                    'score': score
-                })
-        
-        logger.debug(f"Semantic search for '{query}' in {repo} returned {len(formatted_results)} results")
-        return formatted_results
+        logger.info(f"Indexed {len(documents)} chunks from {len(files)} files for {repo} in {total_batches} batches")
     
     def is_indexed(self, repo: str) -> bool:
         """Check if repository is indexed.
@@ -271,3 +515,137 @@ class ChromaDBSemanticIndexer:
             chunks.append('\n'.join(current_chunk))
         
         return chunks
+    
+    def _get_file_metadata_text(self, file_path: str, workspace_path: Path, repo: str) -> Optional[str]:
+        """Get file metadata text from METADATA files for inclusion in embeddings.
+        
+        Args:
+            file_path: Relative file path within repository
+            workspace_path: Workspace path containing the repository
+            repo: Repository identifier
+            
+        Returns:
+            Metadata text string or None if not found
+        """
+        try:
+            repo_path = workspace_path / repo
+            file_full_path = repo_path / file_path
+            
+            if not file_full_path.exists():
+                return None
+            
+            # Find METADATA file in the file's directory or parent directories
+            current_dir = file_full_path.parent
+            
+            # Walk up the directory tree looking for METADATA files
+            while current_dir != repo_path.parent:
+                metadata_file = current_dir / "METADATA"
+                if metadata_file.exists():
+                    try:
+                        with open(metadata_file, 'r', encoding='utf-8') as f:
+                            metadata = yaml.safe_load(f)
+                        
+                        if not metadata:
+                            current_dir = current_dir.parent
+                            continue
+                        
+                        # Look for this file in the metadata
+                        files = metadata.get("files", [])
+                        file_name = file_full_path.name
+                        
+                        for file_info in files:
+                            if file_info.get("name") == file_name:
+                                # Build metadata text
+                                metadata_parts = []
+                                
+                                purpose = file_info.get("purpose", "")
+                                if purpose:
+                                    metadata_parts.append(f"File purpose: {purpose}")
+                                
+                                key_functions = file_info.get("key_functions", [])
+                                if key_functions:
+                                    metadata_parts.append(f"Key functions: {', '.join(key_functions)}")
+                                
+                                key_classes = file_info.get("key_classes", [])
+                                if key_classes:
+                                    metadata_parts.append(f"Key classes: {', '.join(key_classes)}")
+                                
+                                if metadata_parts:
+                                    return "\n".join(metadata_parts)
+                                
+                                break
+                        
+                        # If file not found in this METADATA, check parent
+                        current_dir = current_dir.parent
+                        continue
+                        
+                    except Exception as e:
+                        logger.debug(f"Error reading METADATA file {metadata_file}: {e}")
+                        current_dir = current_dir.parent
+                        continue
+                
+                current_dir = current_dir.parent
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error getting file metadata for {file_path}: {e}")
+            return None
+    
+    def _generate_metadata_overlays(self, repo: str, repo_reader: RepoReader, workspace_path: Path) -> None:
+        """Generate metadata overlays for repository in workspace.
+        
+        Args:
+            repo: Repository identifier
+            repo_reader: RepoReader instance
+            workspace_path: Workspace path
+        """
+        try:
+            repo_path = workspace_path / repo
+            if not repo_path.exists():
+                logger.warning(f"Repository path {repo_path} does not exist, skipping metadata generation")
+                return
+            
+            logger.info(f"Generating metadata overlays for {repo} in {repo_path}")
+            
+            # Common directories to skip (venv, cache, build artifacts, etc.)
+            skip_patterns = {
+                'venv', '__pycache__', '.mypy_cache', '.pytest_cache', 
+                'node_modules', '.git', '.hg', '.svn', 'build', 'dist',
+                '.tox', '.coverage', 'htmlcov', '.eggs',
+                '.idea', '.vscode', '.DS_Store'
+            }
+            
+            def should_skip_directory(directory: Path) -> bool:
+                """Check if directory should be skipped."""
+                # Skip hidden directories (already handled, but keep for clarity)
+                if directory.name.startswith('.'):
+                    return True
+                
+                # Skip common build/cache directories
+                if directory.name in skip_patterns:
+                    return True
+                
+                # Skip .egg-info directories
+                if directory.name.endswith('.egg-info'):
+                    return True
+                
+                # Skip if any parent is in skip patterns
+                for parent in directory.parents:
+                    if parent.name in skip_patterns:
+                        return True
+                
+                return False
+            
+            # Generate metadata recursively for all directories
+            for directory in [repo_path] + list(repo_path.rglob("*")):
+                if directory.is_dir() and not should_skip_directory(directory):
+                    try:
+                        self.metadata_generator.generate_and_write(directory)
+                    except Exception as e:
+                        logger.warning(f"Error generating metadata for {directory}: {e}")
+                        continue
+            
+            logger.info(f"Generated metadata overlays for {repo}")
+        except Exception as e:
+            logger.error(f"Error generating metadata overlays for {repo}: {e}")

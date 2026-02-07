@@ -72,6 +72,10 @@ def create_slack_app(agent: RepoAgent) -> App:
                     pass
                 
                 say(text=message, thread_ts=thread_ts)
+            
+            elif agent.is_update_index_command(text_clean):
+                success, message = agent.handle_update_index(channel_id, user_id, text_clean)
+                say(text=message, thread_ts=thread_ts)
                 
             else:
                 success, message = agent.handle_conversation(channel_id, text_clean, thread_ts)
