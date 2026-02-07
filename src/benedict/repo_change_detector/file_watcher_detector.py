@@ -3,11 +3,12 @@
 Uses file system watching to detect changes (fallback for non-git repos).
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional
 
 from benedict.protocols.repo_change_detector import RepoChangeDetector
+from benedict.lib.dateutil import normalize_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,9 @@ class FileWatcherDetector:
                 "diff": None
             }
         
+        # Normalize since to UTC for comparison
+        since_utc = normalize_to_utc(since)
+        
         added = []
         modified = []
         deleted = []
@@ -74,10 +78,10 @@ class FileWatcherDetector:
             for file_path in repo_path.rglob("*"):
                 if file_path.is_file() and not file_path.name.startswith('.'):
                     try:
-                        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
                         rel_path = str(file_path.relative_to(repo_path))
                         
-                        if file_mtime > since:
+                        if file_mtime > since_utc:
                             # File was modified after 'since'
                             # We can't distinguish between added and modified without tracking
                             # So we'll mark as modified (can be refined later)
@@ -120,7 +124,7 @@ class FileWatcherDetector:
             for file_path in repo_path.rglob("*"):
                 if file_path.is_file():
                     try:
-                        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
                         if latest_mtime is None or file_mtime > latest_mtime:
                             latest_mtime = file_mtime
                     except (OSError, ValueError):

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 from benedict.protocols.repo_change_detector import RepoChangeDetector
+from benedict.lib.dateutil import normalize_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class GitChangeDetector:
             # Filter by since datetime if provided
             if since:
                 # Normalize since to UTC for comparison
-                since_utc = self._normalize_to_utc(since)
+                since_utc = normalize_to_utc(since)
                 
                 # Get commit timestamps and filter
                 filtered_files = {
@@ -266,19 +267,3 @@ class GitChangeDetector:
         except (subprocess.CalledProcessError, ValueError):
             pass
         return None
-    
-    def _normalize_to_utc(self, dt: datetime) -> datetime:
-        """Normalize datetime to UTC for comparison.
-        
-        Args:
-            dt: Datetime to normalize (may be timezone-aware or naive)
-            
-        Returns:
-            Timezone-aware datetime in UTC
-        """
-        if dt.tzinfo is None:
-            # Naive datetime - assume UTC
-            return dt.replace(tzinfo=timezone.utc)
-        else:
-            # Timezone-aware datetime - convert to UTC
-            return dt.astimezone(timezone.utc)

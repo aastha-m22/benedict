@@ -45,5 +45,4 @@ state.json
 # OS
 .DS_Store
 Thumbs.db
-**/*METADATA
 workspaces/

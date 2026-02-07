@@ -111,8 +111,11 @@ class RepoAgent:
         repo = self.extract_repo_name(text)
         
         if not repo:
-            return (False, "⚠️ I couldn't find a repository name in your message.\n"
-                          "Please use format: `@agent onboard repo foo/bar`")
+            return (False, "⚠️ Repository Not Found\n\n"
+                          "I couldn't find a repository name in your message.\n\n"
+                          "*Next steps:*\n"
+                          "• Use format: `@agent onboard repo foo/bar`\n"
+                          "• Or: `@agent this channel is for foo/bar`")
         
         # Create workspace and add resource if workspace_manager is available
         if self.workspace_manager:
@@ -137,14 +140,16 @@ class RepoAgent:
                         break
                 
                 if not repo_source:
-                    return (False, f"⚠️ Could not find repository `{repo}` locally.\n"
-                                  f"Tried:\n"
-                                  f"- {Path(repo)}\n"
-                                  f"- {Path.home() / 'Projects' / repo}\n"
-                                  f"- {Path.home() / 'Projects' / repo.split('/')[-1]}\n"
-                                  f"- {Path.cwd() / repo.split('/')[-1]}\n\n"
-                                  f"Please provide the full path to the repository.\n"
-                                  f"Example: `@agent onboard repo /Users/yourname/Projects/hookedllm`")
+                    return (False, f"⚠️ Repository Not Found\n\n"
+                                  f"Could not find repository `{repo}` locally.\n\n"
+                                  f"*Tried locations:*\n"
+                                  f"• `{Path(repo)}`\n"
+                                  f"• `{Path.home() / 'Projects' / repo}`\n"
+                                  f"• `{Path.home() / 'Projects' / repo.split('/')[-1]}`\n"
+                                  f"• `{Path.cwd() / repo.split('/')[-1]}`\n\n"
+                                  f"*Next steps:*\n"
+                                  f"• Provide the full path to the repository\n"
+                                  f"• Example: `@agent onboard repo /Users/yourname/Projects/hookedllm`")
                 
                 # Add resource to workspace
                 workspace_resource_path = self.workspace_manager.add_resource(
@@ -180,7 +185,11 @@ class RepoAgent:
                 
             except Exception as e:
                 logger.error(f"Error setting up workspace for {repo}: {e}", exc_info=True)
-                return (False, f"⚠️ Error setting up workspace: {str(e)}")
+                return (False, f"⚠️ Workspace Setup Error\n\n"
+                              f"Error setting up workspace: {str(e)}\n\n"
+                              f"*Next steps:*\n"
+                              f"• Check repository path and permissions\n"
+                              f"• Try again or contact support")
         
         self.set_channel_repo(channel_id, repo, user_id)
         return (True, f"✅ Onboarded! This channel is now linked to `{repo}`.\n"
@@ -197,8 +206,10 @@ class RepoAgent:
         channel_config = state.get("channels", {}).get(channel_id)
         
         if not channel_config:
-            return (False, "⚠️ This channel hasn't been onboarded yet.\n"
-                          "To get started: `@agent onboard repo your-org/your-repo`", None)
+            return (False, "⚠️ Not Onboarded\n\n"
+                          "This channel hasn't been onboarded yet.\n\n"
+                          "*Next steps:*\n"
+                          "• Use `@agent onboard repo your-org/your-repo` to get started", None)
         
         repo = channel_config.get("repo")
         onboarded_at = channel_config.get("onboarded_at", "Unknown")
@@ -238,8 +249,10 @@ class RepoAgent:
         repo = self.get_channel_repo(channel_id)
         
         if not repo:
-            return (False, "⚠️ This channel hasn't been onboarded yet.\n"
-                          "To get started: `@agent onboard repo your-org/your-repo`")
+            return (False, "⚠️ Not Onboarded\n\n"
+                          "This channel hasn't been onboarded yet.\n\n"
+                          "*Next steps:*\n"
+                          "• Use `@agent onboard repo your-org/your-repo` to get started")
         
         # Get or create conversation for this thread
         conversation = self.conversation_manager.get_conversation(
@@ -300,7 +313,11 @@ class RepoAgent:
             )
         except Exception as e:
             logger.error(f"Error building context for {repo}: {e}")
-            return (False, f"⚠️ Error reading repository `{repo}`: {str(e)}")
+            return (False, f"⚠️ Repository Read Error\n\n"
+                          f"Error reading repository `{repo}`: {str(e)}\n\n"
+                          f"*Next steps:*\n"
+                          f"• Check repository path and permissions\n"
+                          f"• Verify repository is accessible")
         
         # Build system message with repository context and capabilities
         capabilities = []
@@ -328,7 +345,18 @@ class RepoAgent:
             f"- If asked about your capabilities, explain that you have access to repository files, semantic search, "
             f"and workspace metadata through the Benedict agent system.\n"
             f"- Be confident about your access - you are not a generic LLM without repository access, "
-            f"but rather an agent with integrated repository reading capabilities."
+            f"but rather an agent with integrated repository reading capabilities.\n\n"
+            f"## Response Formatting (Slack-compatible)\n\n"
+            f"- Format your responses using Slack mrkdwn format:\n"
+            f"  - Use `*bold*` for emphasis and headings (not `**bold**`)\n"
+            f"  - Use `_italic_` for italics (not `*italic*`)\n"
+            f"  - Use `` `code` `` for inline code\n"
+            f"  - For code blocks, use triple backticks with language: ```python\\ncode\\n```\n"
+            f"- Keep paragraphs short (2-3 sentences) for better readability\n"
+            f"- Use bullet points (`•` or `-`) for lists\n"
+            f"- Break up long responses into clear sections with headings (use `*Heading*`)\n"
+            f"- When referencing files, use backticks: `path/to/file.py`\n"
+            f"- When showing code examples, always specify the language in code blocks"
         )
         
         # Get conversation history for LLM (includes current user message)
@@ -349,7 +377,11 @@ class RepoAgent:
             return (True, response)
         except Exception as e:
             logger.error(f"LLM error: {e}", exc_info=True)
-            return (False, "⚠️ Error generating response. Please try again.")
+            return (False, "⚠️ Response Generation Error\n\n"
+                          "Error generating response. Please try again.\n\n"
+                          "*Next steps:*\n"
+                          "• Check your question and try rephrasing\n"
+                          "• Verify repository context is available")
     
     def handle_update_index(self, channel_id: str, user_id: str, text: str) -> Tuple[bool, str]:
         """Handle update index command.
@@ -365,11 +397,17 @@ class RepoAgent:
         repo = self.get_channel_repo(channel_id)
         
         if not repo:
-            return (False, "⚠️ This channel hasn't been onboarded yet.\n"
-                          "To get started: `@agent onboard repo your-org/your-repo`")
+            return (False, "⚠️ Not Onboarded\n\n"
+                          "This channel hasn't been onboarded yet.\n\n"
+                          "*Next steps:*\n"
+                          "• Use `@agent onboard repo your-org/your-repo` to get started")
         
         if not self.semantic_indexer or not self.repo_reader:
-            return (False, "⚠️ Semantic indexer or repo reader not available.")
+            return (False, "⚠️ Indexer Not Available\n\n"
+                          "Semantic indexer or repo reader not available.\n\n"
+                          "*Next steps:*\n"
+                          "• Ensure indexer and repo reader are configured\n"
+                          "• Check system configuration")
         
         try:
             workspace_path = None
@@ -450,7 +488,11 @@ class RepoAgent:
                 
         except Exception as e:
             logger.error(f"Error updating index for {repo}: {e}", exc_info=True)
-            return (False, f"⚠️ Error updating index: {str(e)}")
+            return (False, f"⚠️ Index Update Error\n\n"
+                          f"Error updating index: {str(e)}\n\n"
+                          f"*Next steps:*\n"
+                          f"• Check repository access\n"
+                          f"• Try force reindex: `@agent update index force`")
     
     @staticmethod
     def is_onboard_command(text: str) -> bool:

@@ -1,0 +1,69 @@
+content_type: code
+summary: Code directory with 4 files and 1 subdirectories
+purpose: 'Source code directory: metadata'
+files:
+- name: __init__.py
+  content_type: code
+  purpose: Metadata overlay system module.
+  key_functions: []
+  key_classes: []
+- name: content_handlers.py
+  content_type: code
+  purpose: Content-Type Handlers
+  key_functions:
+  - detect_content_type
+  - analyze_directory
+  - summarize_file
+  - extract_key_concepts
+  - detect_content_type
+  - analyze_directory
+  - summarize_file
+  - _extract_file_purpose
+  - extract_key_concepts
+  - detect_content_type
+  - analyze_directory
+  - summarize_file
+  - extract_key_concepts
+  - _merge_date_ranges
+  - detect_content_type
+  - analyze_directory
+  - summarize_file
+  - extract_key_concepts
+  - detect_content_type
+  - analyze_directory
+  - summarize_file
+  - extract_key_concepts
+  key_classes:
+  - ContentHandler
+  - CodeHandler
+  - ConversationHistoryHandler
+  - DocumentHandler
+  - DataHandler
+- name: metadata_generator.py
+  content_type: code
+  purpose: Metadata Generator
+  key_functions:
+  - __init__
+  - generate_metadata
+  - write_metadata
+  - generate_and_write
+  - _detect_content_type
+  - _get_handler
+  - _generate_summary
+  - _generate_purpose
+  key_classes:
+  - MetadataGenerator
+- name: metadata_reader.py
+  content_type: code
+  purpose: Metadata Reader
+  key_functions:
+  - read_metadata
+  - search_metadata
+  - get_directory_summary
+  - list_metadata_files
+  key_classes:
+  - MetadataReader
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code

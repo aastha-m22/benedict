@@ -5,9 +5,11 @@ Uses sentence-transformers for embeddings and ChromaDB for vector storage.
 import logging
 import hashlib
 import yaml
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Any
+
+from benedict.lib.dateutil import normalize_to_utc
 from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
@@ -323,14 +325,17 @@ class ChromaDBSemanticIndexer:
             self.index_repository(repo, repo_reader, workspace_path=repo_full_path.parent, force=True)
             return
         
+        # Normalize since to UTC for comparison
+        since_utc = normalize_to_utc(since)
+        
         all_files = repo_reader.list_files(repo)
         modified_files = []
         for file_path_str in all_files:
             file_path = repo_full_path / file_path_str
             if file_path.is_file():
                 try:
-                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
-                    if file_mtime > since:
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+                    if file_mtime > since_utc:
                         modified_files.append(file_path_str)
                 except (OSError, ValueError) as e:
                     logger.debug(f"Error checking file {file_path}: {e}")
