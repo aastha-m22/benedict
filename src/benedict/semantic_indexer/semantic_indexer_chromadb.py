@@ -4,11 +4,14 @@ Uses sentence-transformers for embeddings and ChromaDB for vector storage.
 """
 import logging
 import hashlib
+import os
+import time
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
+import numpy as np
 from benedict.lib.dateutil import normalize_to_utc
 from sentence_transformers import SentenceTransformer
 import chromadb
@@ -61,7 +64,9 @@ class ChromaDBSemanticIndexer:
         # Store change detector for incremental updates
         self.change_detector = change_detector
         
-        logger.info(f"Initialized ChromaDBSemanticIndexer with persist_dir={persist_directory}")
+        # Configure chunk size (default: 2000 characters, configurable via BENEDICT_CHUNK_SIZE env var)
+        self.max_chunk_size = int(os.environ.get("BENEDICT_CHUNK_SIZE", "2000"))
+        logger.info(f"Initialized ChromaDBSemanticIndexer with persist_dir={persist_directory}, max_chunk_size={self.max_chunk_size}")
     
     def _get_collection(self, repo: str) -> chromadb.Collection:
         """Get or create collection for repository.
@@ -377,6 +382,11 @@ class ChromaDBSemanticIndexer:
         metadatas = []
         ids = []
         
+        # Track statistics for diagnostics
+        file_chunk_counts = []
+        total_content_size = 0
+        skipped_large_files = 0
+        
         for file_path in files:
             try:
                 content = repo_reader.read_file(repo, file_path)
@@ -384,7 +394,10 @@ class ChromaDBSemanticIndexer:
                 # Skip very large files
                 if len(content) > 100000:  # ~100KB
                     logger.debug(f"Skipping large file: {file_path}")
+                    skipped_large_files += 1
                     continue
+                
+                total_content_size += len(content)
                 
                 # Enhance content with file metadata if available
                 if workspace_path:
@@ -394,7 +407,9 @@ class ChromaDBSemanticIndexer:
                         logger.debug(f"Enhanced {file_path} with metadata for indexing")
                 
                 # Split large files into chunks
-                chunks = self._chunk_file_content(file_path, content)
+                chunks = self._chunk_file_content(file_path, content, self.max_chunk_size)
+                chunk_count = len(chunks)
+                file_chunk_counts.append((file_path, chunk_count, len(content)))
                 
                 for i, chunk in enumerate(chunks):
                     chunk_id = f"{repo}:{file_path}:{i}"
@@ -414,13 +429,75 @@ class ChromaDBSemanticIndexer:
             logger.warning(f"No documents to index for {repo}")
             return
         
-        # Generate embeddings
-        logger.info(f"Generating embeddings for {len(documents)} chunks...")
-        embeddings = self.embedding_model.encode(documents, show_progress_bar=False)
+        # Log diagnostic information
+        total_files = len(file_chunk_counts)
+        total_chunks = len(documents)
+        avg_chunks_per_file = total_chunks / total_files if total_files > 0 else 0
+        avg_file_size = total_content_size / total_files if total_files > 0 else 0
+        
+        logger.info(
+            f"Chunking statistics for {repo}: "
+            f"{total_files:,} files → {total_chunks:,} chunks "
+            f"(avg: {avg_chunks_per_file:.1f} chunks/file, "
+            f"avg file size: {avg_file_size:,.0f} chars, "
+            f"skipped {skipped_large_files} large files)"
+        )
+        
+        # Show top 10 files by chunk count
+        if file_chunk_counts:
+            top_chunkers = sorted(file_chunk_counts, key=lambda x: x[1], reverse=True)[:10]
+            if top_chunkers and top_chunkers[0][1] > 1:
+                logger.info("Top files by chunk count:")
+                for file_path, chunk_count, file_size in top_chunkers:
+                    logger.info(
+                        f"  {file_path}: {chunk_count} chunks "
+                        f"({file_size:,} chars, {file_size/chunk_count:.0f} chars/chunk)"
+                    )
+        
+        # Generate embeddings with progress logging
+        total_chunks = len(documents)
+        logger.info(f"Generating embeddings for {total_chunks:,} chunks...")
+        
+        # Process embeddings in batches to show progress
+        embedding_batch_size = 10000  # Process embeddings in batches for progress updates
+        embedding_start_time = time.time()
+        all_embeddings = []
+        
+        embedding_batches = (total_chunks + embedding_batch_size - 1) // embedding_batch_size
+        for emb_batch_idx in range(embedding_batches):
+            emb_start_idx = emb_batch_idx * embedding_batch_size
+            emb_end_idx = min(emb_start_idx + embedding_batch_size, total_chunks)
+            batch_docs = documents[emb_start_idx:emb_end_idx]
+            
+            batch_embeddings = self.embedding_model.encode(batch_docs, show_progress_bar=False)
+            all_embeddings.append(batch_embeddings)
+            
+            # Log progress every batch or every 10% of total
+            progress_pct = (emb_end_idx / total_chunks) * 100
+            elapsed_time = time.time() - embedding_start_time
+            rate = emb_end_idx / elapsed_time if elapsed_time > 0 else 0
+            remaining_chunks = total_chunks - emb_end_idx
+            eta_seconds = remaining_chunks / rate if rate > 0 else 0
+            
+            logger.info(
+                f"Embedding progress: {emb_end_idx:,}/{total_chunks:,} chunks "
+                f"({progress_pct:.1f}%) | "
+                f"Elapsed: {elapsed_time:.1f}s | "
+                f"Rate: {rate:.0f} chunks/s | "
+                f"ETA: {eta_seconds:.0f}s"
+            )
+        
+        # Concatenate all embeddings
+        embeddings = np.vstack(all_embeddings)
+        embedding_total_time = time.time() - embedding_start_time
+        logger.info(f"✅ Completed embedding generation in {embedding_total_time:.1f}s ({total_chunks / embedding_total_time:.0f} chunks/s avg)")
         
         # Batch add to collection (ChromaDB has max batch size limit of ~5461)
         batch_size = 5000  # Safe batch size (under ChromaDB's limit)
         total_batches = (len(documents) + batch_size - 1) // batch_size
+        
+        logger.info(f"Adding {total_chunks:,} chunks to ChromaDB in {total_batches} batches...")
+        insertion_start_time = time.time()
         
         for batch_idx in range(total_batches):
             start_idx = batch_idx * batch_size
@@ -431,16 +508,29 @@ class ChromaDBSemanticIndexer:
             batch_metadatas = metadatas[start_idx:end_idx]
             batch_ids = ids[start_idx:end_idx]
             
+            batch_insert_start = time.time()
             collection.add(
                 embeddings=batch_embeddings.tolist(),
                 documents=batch_documents,
                 metadatas=batch_metadatas,
                 ids=batch_ids
             )
+            batch_insert_elapsed = time.time() - batch_insert_start
             
-            logger.debug(f"Added batch {batch_idx + 1}/{total_batches} ({len(batch_documents)} chunks)")
+            progress_pct = (end_idx / total_chunks) * 100
+            logger.info(
+                f"Inserted batch {batch_idx + 1}/{total_batches} "
+                f"({len(batch_documents):,} chunks, {progress_pct:.1f}%) "
+                f"in {batch_insert_elapsed:.2f}s"
+            )
         
-        logger.info(f"Indexed {len(documents)} chunks from {len(files)} files for {repo} in {total_batches} batches")
+        insertion_total_time = time.time() - insertion_start_time
+        total_time = time.time() - embedding_start_time
+        logger.info(
+            f"✅ Indexed {total_chunks:,} chunks from {len(files)} files for {repo} | "
+            f"Total time: {total_time:.1f}s (embedding: {embedding_total_time:.1f}s, "
+            f"insertion: {insertion_total_time:.1f}s)"
+        )
     
     def is_indexed(self, repo: str) -> bool:
         """Check if repository is indexed.
@@ -458,7 +548,7 @@ class ChromaDBSemanticIndexer:
             return False
     
     def _filter_code_files(self, files: List[str]) -> List[str]:
-        """Filter to code/text files only.
+        """Filter to code/text files only, excluding common build/cache directories.
         
         Args:
             files: List of file paths
@@ -474,8 +564,31 @@ class ChromaDBSemanticIndexer:
             '.dockerfile', '.makefile', '.cmake', '.gradle', '.maven', '.pom'
         }
         
+        # Directories to exclude (virtual environments, dependencies, build artifacts, etc.)
+        exclude_dirs = {
+            '.venv', 'venv', 'env', '.env', 'ENV', 'virtualenv',
+            'node_modules', '.node_modules',
+            '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache',
+            '.git', '.hg', '.svn',
+            'build', 'dist', '.build', '.dist',
+            '.tox', '.coverage', 'htmlcov', '.eggs',
+            '.idea', '.vscode', '.vs', '.DS_Store',
+            'target', '.cargo', '.gradle', '.maven',
+            '.next', '.nuxt', '.cache', '.parcel-cache',
+            'coverage', '.nyc_output', '.sass-cache'
+        }
+        
         filtered = []
         for file_path in files:
+            # Skip files in excluded directories
+            path_parts = file_path.split('/')
+            if any(
+                part in exclude_dirs 
+                or part.endswith('.egg-info')
+                for part in path_parts
+            ):
+                continue
+            
             # Check extension
             if any(file_path.lower().endswith(ext) for ext in code_extensions):
                 filtered.append(file_path)
@@ -485,7 +598,7 @@ class ChromaDBSemanticIndexer:
         
         return filtered
     
-    def _chunk_file_content(self, file_path: str, content: str, max_chunk_size: int = 1000) -> List[str]:
+    def _chunk_file_content(self, file_path: str, content: str, max_chunk_size: int) -> List[str]:
         """Split file content into chunks for indexing.
         
         Args:

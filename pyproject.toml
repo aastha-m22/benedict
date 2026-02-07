@@ -1,6 +1,6 @@
 [project]
 name = "benedict"
-version = "0.1.0"
+version = "0.2.2"
 description = "A Slack bot that links channels to repositories and provides intelligent, repo-scoped AI agent conversations"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -11,6 +11,7 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "chromadb>=0.4.0",
     "pyyaml>=6.0.0",
+    "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]

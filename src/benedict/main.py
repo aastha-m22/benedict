@@ -19,13 +19,11 @@ from benedict.protocols import (
 )
 from benedict.slack_app import create_slack_app
 from benedict.workspace import WorkspaceManager
+from benedict.lib.logging import setup_logging, get_logger
 
 # Configure logging first
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = get_logger(__name__)
 
 
 def _find_repo_root() -> Path:
