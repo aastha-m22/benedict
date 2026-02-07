@@ -1,16 +1,18 @@
-# Slack Repo Agent - v0
+# Slack Repo Agent
 
-A minimal Slack bot that links channels to repositories, providing a foundation for repo-scoped AI agent conversations.
+A Slack bot that links channels to repositories and provides intelligent, repo-scoped AI agent conversations.
 
 ## Overview
 
-This is **v0** - a proof-of-concept skeleton that demonstrates:
+This bot provides:
 - ✅ Slack bot responding to @mentions
 - ✅ Channel → Repository mapping
 - ✅ Persistent state across restarts
-- ✅ Thread-based conversations
-- ❌ LLM integration (coming in v1)
-- ❌ GitHub API integration (coming in v1)
+- ✅ Thread-based conversations with history
+- ✅ LLM integration (Claude 3.5 Sonnet)
+- ✅ Semantic code search (ChromaDB + sentence-transformers)
+- ✅ Local repository access
+- ❌ GitHub API integration (coming in M2)
 - ❌ Notion/GDocs access (coming in v2)
 
 ## Features
@@ -19,21 +21,21 @@ This is **v0** - a proof-of-concept skeleton that demonstrates:
 
 1. **Onboard a channel**
    ```
-   @agent onboard repo foo/bar
+   @benedict onboard repo foo/bar
    ```
    Links the current channel to a repository.
 
 2. **Check status**
    ```
-   @agent status
+   @benedict status
    ```
    Shows which repository the channel is linked to.
 
-3. **Ask questions** (stub response in v0)
+3. **Ask questions**
    ```
-   @agent what's the architecture?
+   @benedict what's the architecture?
    ```
-   The bot acknowledges but doesn't provide intelligent answers yet.
+   The bot uses semantic search and LLM to provide intelligent answers.
 
 ## Prerequisites
 
@@ -43,54 +45,15 @@ This is **v0** - a proof-of-concept skeleton that demonstrates:
 
 ## Slack App Setup
 
-### Step 1: Create a Slack App
+**📖 See [SLACK_SETUP.md](SLACK_SETUP.md) for complete step-by-step setup instructions.**
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps)
-2. Click **"Create New App"**
-3. Choose **"From scratch"**
-4. Enter app name: `Repo Agent` (or your preferred name)
-5. Select your workspace
-6. Click **"Create App"**
-
-### Step 2: Enable Socket Mode
-
-1. In your app settings, go to **"Socket Mode"** (under Settings in the sidebar)
-2. Toggle **"Enable Socket Mode"** to ON
-3. You'll be prompted to create an app-level token:
-   - Token Name: `socket-token` (or any name)
-   - Scope: `connections:write`
-   - Click **"Generate"**
-4. **Copy the token** (starts with `xapp-`) - you'll need this for `SLACK_APP_TOKEN`
-
-### Step 3: Add Bot Token Scopes
-
-1. Go to **"OAuth & Permissions"** (under Features in the sidebar)
-2. Scroll down to **"Scopes"** → **"Bot Token Scopes"**
-3. Click **"Add an OAuth Scope"** and add these scopes:
-   - `chat:write` - Send messages
-   - `channels:history` - Read channel messages
-   - `channels:read` - View channel info
-
-### Step 4: Subscribe to Events
-
-1. Go to **"Event Subscriptions"** (under Features in the sidebar)
-2. Toggle **"Enable Events"** to ON
-3. Under **"Subscribe to bot events"**, click **"Add Bot User Event"**
-4. Add this event:
-   - `app_mention` - When the bot is @mentioned
-
-### Step 5: Install App to Workspace
-
-1. Go to **"Install App"** (under Settings in the sidebar)
-2. Click **"Install to Workspace"**
-3. Review permissions and click **"Allow"**
-4. **Copy the "Bot User OAuth Token"** (starts with `xoxb-`) - you'll need this for `SLACK_BOT_TOKEN`
-
-### Step 6: Note Your Tokens
-
-You should now have two tokens:
-- **Bot Token** (`xoxb-...`) - from OAuth & Permissions
-- **App Token** (`xapp-...`) - from Socket Mode
+Quick summary:
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Enable Socket Mode and create app token (`xapp-...`)
+3. Add bot scopes: `chat:write`, `channels:history`, `channels:read`
+4. Subscribe to `app_mention` event
+5. Install app to workspace and get bot token (`xoxb-...`)
+6. Add both tokens to `.env` file
 
 ## Installation
 
@@ -103,21 +66,44 @@ cd slack-repo-agent
 
 Or download the files directly.
 
-### 2. Install Dependencies
+### 2. Install uv (if not already installed)
+
+`uv` is a fast Python package installer and resolver. Install it with:
 
 ```bash
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Or using a virtual environment (recommended):
-
+Or using Homebrew (macOS):
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+brew install uv
 ```
 
-### 3. Configure Environment Variables
+### 3. Install Dependencies
+
+**Using Make (recommended):**
+```bash
+make sync
+```
+
+Or:
+```bash
+make install
+```
+
+**Or manually with uv:**
+```bash
+uv pip install -e .
+```
+
+**Using a virtual environment (recommended):**
+```bash
+make venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+make sync
+```
+
+### 4. Configure Environment Variables
 
 Create a `.env` file in the project directory:
 
@@ -126,17 +112,40 @@ SLACK_BOT_TOKEN=xoxb-your-bot-token-here
 SLACK_APP_TOKEN=xapp-your-app-token-here
 ```
 
-Replace the values with your actual tokens from the Slack App setup.
+Replace the values with your actual tokens from the Slack App setup (see [SLACK_SETUP.md](SLACK_SETUP.md)).
 
-### 4. Run the Bot
+### 5. Run the Bot
 
+**Using Make:**
 ```bash
-python app.py
+make run
+```
+
+**Or manually:**
+```bash
+python -m benedict.main
 ```
 
 You should see:
 ```
 ✅ Bot is running! Press Ctrl+C to stop.
+```
+
+### Quick Start with Make
+
+```bash
+# Create virtual environment and install dependencies
+make setup
+source .venv/bin/activate  # uv creates .venv by default
+
+# Sync dependencies (uv's recommended way)
+make sync
+
+# Check dependencies
+make deps
+
+# Run the bot
+make run
 ```
 
 ## Usage
@@ -145,15 +154,14 @@ You should see:
 
 In any Slack channel, type:
 ```
-/invite @Repo Agent
+/invite @benedict
 ```
-(Use whatever name you gave your bot)
 
 ### 2. Onboard the Channel
 
 Tell the bot which repository this channel is about:
 ```
-@Repo Agent onboard repo foo/bar
+@benedict onboard repo foo/bar
 ```
 
 The bot will confirm:
@@ -165,7 +173,7 @@ I'll remember this repo for all our conversations here.
 ### 3. Check Status
 
 ```
-@Repo Agent status
+@benedict status
 ```
 
 Response:
@@ -178,50 +186,42 @@ Response:
 👤 By: @michael
 ```
 
-### 4. Ask Questions (v0 stub)
+### 4. Ask Questions
 
 ```
-@Repo Agent what files handle authentication?
+@benedict what files handle authentication?
 ```
 
-Response:
-```
-I'm your agent for `foo/bar`. 🤖
-
-(LLM integration not connected yet, but I know we're talking about foo/bar!)
-
-You asked: what files handle authentication?
-```
+The bot will:
+1. Use semantic search to find relevant files
+2. Build context from repository code
+3. Generate intelligent responses using Claude LLM
+4. Maintain conversation history in the thread
 
 ## Testing Checklist
 
 Use this checklist to verify everything works:
 
 ### Basic Setup
-- [ ] Created Slack app
-- [ ] Enabled Socket Mode
-- [ ] Added bot scopes (`chat:write`, `channels:history`, `channels:read`)
-- [ ] Subscribed to `app_mention` event
-- [ ] Installed app to workspace
-- [ ] Copied both tokens (bot token and app token)
+- [ ] Completed Slack app setup (see [SLACK_SETUP.md](SLACK_SETUP.md))
 - [ ] Created `.env` file with tokens
-- [ ] Installed Python dependencies
-- [ ] Started bot successfully
+- [ ] Installed Python dependencies (`make sync` or `make install`)
+- [ ] Started bot successfully (`make run`)
 
 ### Single Channel Test
 - [ ] Created test channel `#test-foo`
 - [ ] Invited bot to channel
 - [ ] Tried talking without onboarding (should get prompt)
-- [ ] Onboarded: `@agent onboard repo foo/bar`
+- [ ] Onboarded: `@benedict onboard repo foo/bar`
 - [ ] Got success confirmation
-- [ ] Checked status: `@agent status`
-- [ ] Asked question: `@agent what's the code structure?`
+- [ ] Checked status: `@benedict status`
+- [ ] Asked question: `@benedict what's the code structure?`
 - [ ] Got stub response mentioning the repo
 
 ### Multiple Channels Test
 - [ ] Created second channel `#test-bar`
 - [ ] Invited bot to second channel
-- [ ] Onboarded: `@agent onboard repo baz/qux`
+- [ ] Onboarded: `@benedict onboard repo baz/qux`
 - [ ] Verified status shows different repo
 - [ ] Went back to first channel
 - [ ] Verified status still shows `foo/bar`
@@ -242,13 +242,49 @@ Use this checklist to verify everything works:
 
 ```
 slack-repo-agent/
-├── app.py              # Main bot application (~250 lines)
-├── requirements.txt    # Python dependencies
-├── README.md          # This file
-├── .env               # Your tokens (DO NOT COMMIT)
-├── .env.example       # Template for .env
-├── .gitignore         # Git ignore rules
-└── state.json         # Runtime state (created automatically)
+├── src/
+│   └── benedict/                    # Main package
+│       ├── __init__.py
+│       ├── main.py                  # Entry point (composition root)
+│       ├── agent.py                 # Main agent logic
+│       ├── slack_app.py             # Slack Bolt app configuration
+│       ├── models/                  # Domain models
+│       │   ├── __init__.py
+│       │   └── conversation.py      # Conversation and Message models
+│       ├── protocols/               # Protocol definitions (interfaces)
+│       │   ├── __init__.py
+│       │   ├── llm.py               # LLM protocol
+│       │   ├── repo_reader.py       # Repository reader protocol
+│       │   ├── semantic_indexer.py  # Semantic search protocol
+│       │   └── conversation_repository.py  # Conversation repository protocol
+│       ├── llm/                     # LLM implementations
+│       │   ├── __init__.py
+│       │   ├── llm_claude.py        # Claude implementation
+│       │   └── llm_mock.py          # Mock implementation
+│       ├── repo_reader/              # Repository reader implementations
+│       │   ├── __init__.py
+│       │   ├── repo_reader_local.py # Local filesystem implementation
+│       │   └── repo_reader_mock.py  # Mock implementation
+│       ├── semantic_indexer/         # Semantic indexer implementations
+│       │   ├── __init__.py
+│       │   ├── semantic_indexer_chromadb.py  # ChromaDB implementation
+│       │   └── semantic_indexer_mock.py     # Mock implementation
+│       ├── conversation_repository/   # Conversation repository implementations
+│       │   ├── __init__.py
+│       │   ├── conversation_repository_json.py  # JSON implementation
+│       │   └── conversation_repository_mock.py  # Mock implementation
+│       └── utils/                    # Utility functions
+│           ├── __init__.py
+│           └── context.py           # Context building utilities
+├── Makefile                          # Development commands
+├── pyproject.toml                    # Python project configuration and dependencies
+├── README.md                  # This file
+├── SLACK_SETUP.md             # Slack app setup guide
+├── ARCHITECTURE.md            # Architecture documentation
+├── CLEANUP_SUMMARY.md         # Cleanup documentation
+├── .env                       # Your tokens (DO NOT COMMIT)
+├── .gitignore                 # Git ignore rules
+└── state.json                 # Runtime state (created automatically)
 ```
 
 ## State File
@@ -274,31 +310,20 @@ This file is created automatically and persists across restarts.
 ### Bot doesn't respond
 
 **Check:**
-1. Is the bot running? (`python app.py` should show "Bot is running!")
-2. Is the bot invited to the channel? (`/invite @Repo Agent`)
+1. Is the bot running? (`python -m benedict.main` or `benedict` should show "Bot is running!")
+2. Is the bot invited to the channel? (`/invite @benedict`)
 3. Are you @mentioning the bot? (Just typing won't work)
 4. Check the terminal for error messages
 
-### "Missing SLACK_BOT_TOKEN" error
+### "Missing SLACK_BOT_TOKEN" or "Missing SLACK_APP_TOKEN" error
 
 **Fix:**
-1. Make sure `.env` file exists in the same directory as `app.py`
-2. Verify the file contains `SLACK_BOT_TOKEN=xoxb-...`
-3. Make sure there are no spaces around the `=`
-4. Restart the bot after creating/editing `.env`
-
-### "Missing SLACK_APP_TOKEN" error
-
-**Fix:**
-1. Make sure Socket Mode is enabled in your Slack app settings
-2. Create an app-level token with `connections:write` scope
-3. Add `SLACK_APP_TOKEN=xapp-...` to your `.env` file
-4. Restart the bot
+See [SLACK_SETUP.md](SLACK_SETUP.md) for detailed troubleshooting steps.
 
 ### Bot responds but says "This channel hasn't been onboarded yet"
 
 **Fix:**
-1. Run the onboard command: `@agent onboard repo your-org/your-repo`
+1. Run the onboard command: `@benedict onboard repo your-org/your-repo`
 2. Make sure you're using the format `org/repo` (e.g., `acme/widget`)
 
 ### State file gets corrupted
@@ -315,14 +340,33 @@ This is expected behavior in v0. The bot replies in-thread to keep conversations
 
 ## Development
 
+### Makefile Commands
+
+The project includes a Makefile for common tasks:
+
+```bash
+make help      # Show all available commands
+make sync      # Sync dependencies with uv (recommended)
+make install   # Install dependencies with uv
+make deps      # Check if dependencies are installed
+make run       # Run the bot
+make clean     # Remove cache files
+make lint      # Run linters (if installed)
+make format    # Format code (if black is installed)
+```
+
 ### Running in Development
 
 ```bash
-# Activate virtual environment
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Activate virtual environment (uv creates .venv by default)
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Run with debug logging
-python app.py
+make run
+# or
+python -m benedict.main
+# or (after installation)
+benedict
 ```
 
 ### Project Structure
@@ -341,17 +385,18 @@ python app.py
 
 ## Roadmap
 
-### v0 (Current) ✅
+### Current Features ✅
 - Slack connection via Socket Mode
 - Channel → Repo mapping
 - Onboard & status commands
-- Stub conversation responses
+- LLM integration (Claude 3.5 Sonnet)
+- Semantic code search (ChromaDB + sentence-transformers)
+- Conversation history tracking
+- Local repository access
 
-### v1 (Next)
-- LLM integration (Claude/GPT-4)
-- GitHub API: read repo files
-- Basic code Q&A
-- Intelligent responses
+### Next (M2)
+- GitHub API: read repo files remotely
+- Enhanced code understanding
 
 ### v2 (Future)
 - Notion integration
@@ -382,6 +427,8 @@ For issues or questions:
 4. Verify `.env` file is correctly formatted
 
 ## Architecture
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for current architecture overview.
 
 See [`plans/slack-agent-architecture.md`](plans/slack-agent-architecture.md) for detailed architecture documentation.
 
