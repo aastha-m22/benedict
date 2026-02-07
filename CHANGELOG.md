@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2024-12-XX
+
 ### Added
 - Configurable chunk size via `BENEDICT_CHUNK_SIZE` environment variable (default: 2000 characters)
 - Diagnostic logging for chunking statistics showing:
@@ -31,8 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Prevented indexing of `.venv` and other virtual environment directories
 - Reduced unnecessary chunk generation from third-party dependencies
+- Fixed `AttributeError` when accessing `SlackFormatter.MAX_MESSAGE_LENGTH` by adding it as a class attribute
 
-## [0.2.2] - Current
+## [0.2.2]
 
 ### Added
 - Semantic code search using ChromaDB and sentence-transformers

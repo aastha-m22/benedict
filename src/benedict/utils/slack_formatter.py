@@ -18,6 +18,9 @@ CHUNK_THRESHOLD = 2000  # Use Block Kit for messages longer than this
 class SlackFormatter:
     """Converts markdown to Slack mrkdwn format."""
     
+    # Slack API limits (expose module constants as class attributes)
+    MAX_MESSAGE_LENGTH = 4000
+    
     @staticmethod
     def markdown_to_mrkdwn(text: str) -> str:
         """Convert markdown to Slack mrkdwn format.

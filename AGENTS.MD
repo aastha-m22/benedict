@@ -171,3 +171,7 @@ No unstated assumptions
 2. Generally be mindful about how a component might change in the future when designing stable abstractions
 3. Root composition is preferred when possible to aid testability. Rule of thumb: Concrete class instantiation is only allowed at the root.
 </CODE_ARCHITECTURE>
+
+<VERSIONBUMP>
+After every change update @pyproject.toml and CHANGELOG.md
+</VERSIONBUMP>
