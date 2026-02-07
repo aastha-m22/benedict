@@ -19,15 +19,72 @@ from benedict.protocols import (
 )
 from benedict.slack_app import create_slack_app
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _find_repo_root() -> Path:
+    """Find repository root by looking for common markers (.git, pyproject.toml, etc.).
+    
+    Returns:
+        Path to repository root, or current working directory if not found
+    """
+    # Start from the directory containing this file
+    current = Path(__file__).parent
+    
+    # Walk up the directory tree looking for repo markers
+    for parent in [current] + list(current.parents):
+        if any((parent / marker).exists() for marker in ['.git', 'pyproject.toml', 'setup.py', '.env']):
+            return parent
+    
+    # Fallback to current working directory
+    return Path.cwd()
+
+
+def _get_data_dir() -> Path:
+    """Get data directory from environment or use default.
+    
+    Returns:
+        Path to data directory
+    """
+    data_dir = os.environ.get("BENEDICT_DATA_DIR")
+    if data_dir:
+        return Path(data_dir).resolve()
+    
+    # Default: use repo root
+    return _find_repo_root()
+
+
+def _get_env_file() -> Path:
+    """Get .env file path from environment or use default.
+    
+    Returns:
+        Path to .env file
+    """
+    env_file = os.environ.get("BENEDICT_ENV_FILE")
+    if env_file:
+        return Path(env_file).resolve()
+    
+    # Default: look for .env in repo root
+    repo_root = _find_repo_root()
+    return repo_root / ".env"
+
+
+# Load environment variables from .env file only if not already set
+# This respects existing environment variables and falls back to .env file
+_env_path = _get_env_file()
+if not os.environ.get("SLACK_BOT_TOKEN") or not os.environ.get("SLACK_APP_TOKEN"):
+    if _env_path.exists():
+        logger.info(f"Loading .env from: {_env_path}")
+        load_dotenv(dotenv_path=_env_path, override=False)  # override=False means don't overwrite existing env vars
+    else:
+        logger.warning(f".env file not found at: {_env_path}")
+else:
+    logger.info("Using environment variables from system (not loading .env file)")
 
 
 def main():
@@ -69,19 +126,26 @@ def main():
         logger.warning(f"⚠️ Repo reader not available: {e}")
         logger.info("Running without repository access")
     
+    # Get data directory (configurable via BENEDICT_DATA_DIR env var)
+    data_dir = _get_data_dir()
+    logger.info(f"Using data directory: {data_dir}")
+    
     # Create semantic indexer (optional - falls back to keyword matching if None)
     semantic_indexer = None
     try:
-        semantic_indexer = create_semantic_indexer(provider="chromadb")
-        logger.info("✅ Semantic indexer initialized (ChromaDB)")
+        # Use configurable path for ChromaDB (defaults to data_dir/.chroma_db)
+        chroma_db_path = os.environ.get("BENEDICT_CHROMA_DB_DIR", str(data_dir / ".chroma_db"))
+        semantic_indexer = create_semantic_indexer(provider="chromadb", persist_directory=chroma_db_path)
+        logger.info(f"✅ Semantic indexer initialized (ChromaDB at {chroma_db_path})")
     except Exception as e:
         logger.warning(f"⚠️ Semantic indexer not available: {e}")
         logger.info("Falling back to keyword-based file matching")
     
     # Create conversation repository
-    state_file = "state.json"
+    # Use configurable path for state file (defaults to data_dir/state.json)
+    state_file = os.environ.get("BENEDICT_STATE_FILE", str(data_dir / "state.json"))
     conversation_repository = create_conversation_repository(provider="json", state_file=state_file)
-    logger.info("✅ Conversation repository initialized (JSON)")
+    logger.info(f"✅ Conversation repository initialized (JSON at {state_file})")
     
     # Create agent with dependencies
     agent = RepoAgent(
@@ -93,9 +157,10 @@ def main():
     )
     
     # Initialize state file if it doesn't exist
-    if not Path("state.json").exists():
+    state_path = Path(state_file)
+    if not state_path.exists():
         agent.save_state({"channels": {}})
-        logger.info("Created new state file: state.json")
+        logger.info(f"Created new state file: {state_path}")
     
     # Create and configure Slack app
     slack_app = create_slack_app(agent)

@@ -47,11 +47,12 @@ class SemanticIndexer(Protocol):
         ...
 
 
-def create_semantic_indexer(provider: str = "chromadb") -> SemanticIndexer:
+def create_semantic_indexer(provider: str = "chromadb", persist_directory: Optional[str] = None) -> SemanticIndexer:
     """Factory function to create SemanticIndexer instance.
     
     Args:
         provider: Provider name ("chromadb" or "mock")
+        persist_directory: Optional directory path for ChromaDB persistence
         
     Returns:
         SemanticIndexer instance
@@ -61,6 +62,8 @@ def create_semantic_indexer(provider: str = "chromadb") -> SemanticIndexer:
     """
     if provider == "chromadb":
         from benedict.semantic_indexer.semantic_indexer_chromadb import ChromaDBSemanticIndexer
+        if persist_directory:
+            return ChromaDBSemanticIndexer(persist_directory=persist_directory)
         return ChromaDBSemanticIndexer()
     elif provider == "mock":
         from benedict.semantic_indexer.semantic_indexer_mock import MockSemanticIndexer

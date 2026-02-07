@@ -28,11 +28,12 @@ class LLM(Protocol):
         ...
 
 
-def create_llm(provider: str = "claude") -> LLM:
+def create_llm(provider: str = "claude", model: Optional[str] = None) -> LLM:
     """Factory function to create LLM instance.
     
     Args:
         provider: Provider name ("claude" or "mock")
+        model: Optional model name (for Claude, defaults to ANTHROPIC_MODEL env var or claude-3-5-sonnet-20241022)
         
     Returns:
         LLM instance
@@ -42,7 +43,7 @@ def create_llm(provider: str = "claude") -> LLM:
     """
     if provider == "claude":
         from benedict.llm.llm_claude import ClaudeLLM
-        return ClaudeLLM()
+        return ClaudeLLM(model=model)
     elif provider == "mock":
         from benedict.llm.llm_mock import MockLLM
         return MockLLM()

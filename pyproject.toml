@@ -1,9 +1,9 @@
 [project]
-name = "slack-repo-agent"
+name = "benedict"
 version = "0.1.0"
 description = "A Slack bot that links channels to repositories and provides intelligent, repo-scoped AI agent conversations"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "slack-bolt>=1.18.0",
     "python-dotenv>=1.0.0",

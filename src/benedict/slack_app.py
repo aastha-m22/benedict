@@ -11,8 +11,8 @@ from benedict.agent import RepoAgent
 
 logger = logging.getLogger(__name__)
 
-# Initialize Slack app
-app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
+# Slack app will be initialized in create_slack_app() after .env is loaded
+app = None
 
 
 def create_slack_app(agent: RepoAgent) -> App:
@@ -24,6 +24,13 @@ def create_slack_app(agent: RepoAgent) -> App:
     Returns:
         Configured Slack app
     """
+    # Initialize Slack app (after .env is loaded)
+    global app
+    bot_token = os.environ.get("SLACK_BOT_TOKEN")
+    if not bot_token:
+        raise ValueError("SLACK_BOT_TOKEN not found in environment variables")
+    app = App(token=bot_token)
+    
     # Register event handlers
     @app.event("app_mention")
     def handle_app_mention(event, say, client):

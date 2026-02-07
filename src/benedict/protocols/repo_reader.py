@@ -2,7 +2,7 @@
 
 Defines the interface for repository file readers.
 """
-from typing import Protocol, List
+from typing import Protocol, List, Optional
 
 
 class RepoReader(Protocol):
