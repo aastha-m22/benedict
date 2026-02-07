@@ -1,4 +1,4 @@
-.PHONY: help install sync run test clean lint format check deps venv setup
+.PHONY: help install sync run test clean lint format check deps venv setup recreate-env
 
 # Default target
 help:
@@ -9,6 +9,7 @@ help:
 	@echo "  make install     - Install dependencies with uv"
 	@echo "  make sync        - Sync dependencies with uv (recommended)"
 	@echo "  make deps        - Check if dependencies are installed"
+	@echo "  make recreate-env - Remove and recreate virtual environment with dependencies"
 	@echo ""
 	@echo "Running:"
 	@echo "  make run         - Run the bot"
@@ -124,3 +125,21 @@ sync:
 	fi
 	uv pip install -e .
 	@echo "✅ Dependencies synced"
+
+# Recreate virtual environment (nuke and rebuild)
+recreate-env:
+	@echo "Recreating virtual environment..."
+	@if ! command -v uv > /dev/null; then \
+		echo "❌ uv not found. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+		exit 1; \
+	fi
+	@if [ -d .venv ]; then \
+		echo "Removing existing .venv directory..."; \
+		rm -rf .venv; \
+	fi
+	@echo "Creating new virtual environment..."
+	uv venv
+	@echo "Installing dependencies..."
+	uv pip install -e .
+	@echo "✅ Virtual environment recreated and dependencies installed"
+	@echo "Activate with: source .venv/bin/activate"
