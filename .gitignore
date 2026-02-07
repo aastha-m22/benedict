@@ -1,15 +1,12 @@
-# Environment variables
-.env
-
-# State file
-state.json
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -26,11 +23,13 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-.venv/
-ENV/
-env/
+# Environment
+.env
+.env.local
+
+# State and data
+state.json
+.chroma_db/
 
 # IDE
 .vscode/
