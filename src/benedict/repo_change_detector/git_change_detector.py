@@ -4,7 +4,7 @@ Uses git commands to detect changes in repositories.
 """
 import logging
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -83,6 +83,9 @@ class GitChangeDetector:
             
             # Filter by since datetime if provided
             if since:
+                # Normalize since to UTC for comparison
+                since_utc = self._normalize_to_utc(since)
+                
                 # Get commit timestamps and filter
                 filtered_files = {
                     "added": [],
@@ -93,7 +96,7 @@ class GitChangeDetector:
                 for file_type in ["added", "modified", "deleted"]:
                     for file_path in changed_files.get(file_type, []):
                         file_commit_time = self._get_file_last_commit_time(repo_path, file_path, remote_commit)
-                        if file_commit_time and file_commit_time > since:
+                        if file_commit_time and file_commit_time > since_utc:
                             filtered_files[file_type].append(file_path)
                 
                 changed_files = filtered_files
@@ -146,7 +149,7 @@ class GitChangeDetector:
                     )
                     if result.stdout.strip():
                         timestamp = int(result.stdout.strip())
-                        return datetime.fromtimestamp(timestamp)
+                        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
                 except (subprocess.CalledProcessError, ValueError):
                     continue
             
@@ -259,7 +262,23 @@ class GitChangeDetector:
             )
             if result.stdout.strip():
                 timestamp = int(result.stdout.strip())
-                return datetime.fromtimestamp(timestamp)
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
         except (subprocess.CalledProcessError, ValueError):
             pass
         return None
+    
+    def _normalize_to_utc(self, dt: datetime) -> datetime:
+        """Normalize datetime to UTC for comparison.
+        
+        Args:
+            dt: Datetime to normalize (may be timezone-aware or naive)
+            
+        Returns:
+            Timezone-aware datetime in UTC
+        """
+        if dt.tzinfo is None:
+            # Naive datetime - assume UTC
+            return dt.replace(tzinfo=timezone.utc)
+        else:
+            # Timezone-aware datetime - convert to UTC
+            return dt.astimezone(timezone.utc)
