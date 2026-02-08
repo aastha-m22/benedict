@@ -25,7 +25,7 @@ REPO_PATTERN = re.compile(r"([a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)")
 
 class RepoAgent:
     """Repository-scoped agent with LLM and repository access."""
-
+    
     def __init__(
         self,
         state_file: str = "state.json",
@@ -36,7 +36,7 @@ class RepoAgent:
         workspace_manager: Optional[WorkspaceManager] = None,
     ):
         """Initialize repository agent.
-
+        
         Args:
             state_file: Path to state JSON file (used for conversation repository if not provided)
             llm: Optional LLM instance for intelligent responses
@@ -51,7 +51,7 @@ class RepoAgent:
         self.semantic_indexer = semantic_indexer
         self.workspace_manager = workspace_manager
         self.metadata_generator = MetadataGenerator() if workspace_manager else None
-
+        
         # Create conversation repository if not provided
         if conversation_repository is None:
             from benedict.protocols.conversation_repository import create_conversation_repository
@@ -59,10 +59,10 @@ class RepoAgent:
             conversation_repository = create_conversation_repository(
                 provider="json", state_file=state_file
             )
-
+        
         self.conversation_manager = ConversationManager(conversation_repository)
         logger.info(f"Initialized RepoAgent with state_file={state_file}")
-
+    
     def load_state(self) -> Dict[str, Any]:
         """Load state from JSON file."""
         if self.state_file.exists():
@@ -73,9 +73,9 @@ class RepoAgent:
                     return state
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse {self.state_file}, creating new state")
-
+        
         return {"channels": {}}
-
+    
     def save_state(self, state: Dict[str, Any]) -> None:
         """Persist state to JSON file."""
         try:
@@ -84,7 +84,7 @@ class RepoAgent:
             logger.debug(f"Saved state with {len(state.get('channels', {}))} channels")
         except Exception as e:
             logger.error(f"Failed to save state: {e}")
-
+    
     def get_channel_repo(self, channel_id: str) -> Optional[str]:
         """Get repository associated with channel."""
         state = self.load_state()
@@ -92,13 +92,13 @@ class RepoAgent:
         if channel_config:
             return channel_config.get("repo")
         return None
-
+    
     def set_channel_repo(self, channel_id: str, repo: str, user_id: str) -> None:
         """Associate repository with channel."""
         state = self.load_state()
         if "channels" not in state:
             state["channels"] = {}
-
+        
         state["channels"][channel_id] = {
             "repo": repo,
             "onboarded_at": datetime.utcnow().isoformat() + "Z",
@@ -106,31 +106,31 @@ class RepoAgent:
         }
         self.save_state(state)
         logger.info(f"Onboarded channel {channel_id} to repo {repo}")
-
+    
     def handle_onboard(self, channel_id: str, user_id: str, text: str) -> Tuple[bool, str]:
         """Handle onboard command.
-
+        
         Returns:
             Tuple of (success, message)
         """
         repo = self.extract_repo_name(text)
-
+        
         if not repo:
             return (
                 False,
                 "⚠️ Repository Not Found\n\n"
-                "I couldn't find a repository name in your message.\n\n"
-                "*Next steps:*\n"
-                "• Use format: `@agent onboard repo foo/bar`\n"
+                          "I couldn't find a repository name in your message.\n\n"
+                          "*Next steps:*\n"
+                          "• Use format: `@agent onboard repo foo/bar`\n"
                 "• Or: `@agent this channel is for foo/bar`",
             )
-
+        
         # Create workspace and add resource if workspace_manager is available
         if self.workspace_manager:
             try:
                 workspace_path = self.workspace_manager.create_workspace(channel_id)
                 action_logger = ActionLogger(workspace_path)
-
+                
                 # Try to resolve repository path
                 # Check multiple possible locations: absolute paths, org/repo structure, or just repo name
                 repo_source = None
@@ -144,28 +144,28 @@ class RepoAgent:
                     / repo.split("/")[-1],  # Just repo name: ~/Projects/hookedllm
                     Path.cwd() / repo.split("/")[-1],  # Current directory: ./hookedllm
                 ]
-
+                
                 for path in possible_paths:
                     if path.exists() and path.is_dir():
                         repo_source = path
                         logger.info(f"Found repository at: {repo_source}")
                         break
-
+                
                 if not repo_source:
                     return (
                         False,
                         f"⚠️ Repository Not Found\n\n"
-                        f"Could not find repository `{repo}` locally.\n\n"
-                        f"*Tried locations:*\n"
-                        f"• `{Path(repo)}`\n"
-                        f"• `{Path.home() / 'Projects' / repo}`\n"
-                        f"• `{Path.home() / 'Projects' / repo.split('/')[-1]}`\n"
-                        f"• `{Path.cwd() / repo.split('/')[-1]}`\n\n"
-                        f"*Next steps:*\n"
-                        f"• Provide the full path to the repository\n"
+                                  f"Could not find repository `{repo}` locally.\n\n"
+                                  f"*Tried locations:*\n"
+                                  f"• `{Path(repo)}`\n"
+                                  f"• `{Path.home() / 'Projects' / repo}`\n"
+                                  f"• `{Path.home() / 'Projects' / repo.split('/')[-1]}`\n"
+                                  f"• `{Path.cwd() / repo.split('/')[-1]}`\n\n"
+                                  f"*Next steps:*\n"
+                                  f"• Provide the full path to the repository\n"
                         f"• Example: `@agent onboard repo /Users/yourname/Projects/hookedllm`",
                     )
-
+                
                 # Add resource to workspace
                 workspace_resource_path = self.workspace_manager.add_resource(
                     context_id=channel_id,
@@ -174,7 +174,7 @@ class RepoAgent:
                     name=repo,
                     content_type="code",
                 )
-
+                
                 # Log action
                 action_logger.log_action(
                     action="symlink_repository",
@@ -183,7 +183,7 @@ class RepoAgent:
                     source=str(repo_source),
                     workspace_path=workspace_resource_path,
                 )
-
+                
                 # Generate initial metadata
                 if self.metadata_generator:
                     try:
@@ -197,126 +197,126 @@ class RepoAgent:
                             )
                     except Exception as e:
                         logger.warning(f"Error generating initial metadata for {repo}: {e}")
-
+                
             except Exception as e:
                 logger.error(f"Error setting up workspace for {repo}: {e}", exc_info=True)
                 return (
                     False,
                     f"⚠️ Workspace Setup Error\n\n"
-                    f"Error setting up workspace: {str(e)}\n\n"
-                    f"*Next steps:*\n"
-                    f"• Check repository path and permissions\n"
+                              f"Error setting up workspace: {str(e)}\n\n"
+                              f"*Next steps:*\n"
+                              f"• Check repository path and permissions\n"
                     f"• Try again or contact support",
                 )
-
+        
         self.set_channel_repo(channel_id, repo, user_id)
         return (
             True,
             f"✅ Onboarded! This channel is now linked to `{repo}`.\n"
-            f"I'll remember this repo for all our conversations here.\n\n"
+                      f"I'll remember this repo for all our conversations here.\n\n"
             f"Try: `@agent status` to see the details.",
         )
-
+    
     def handle_status(self, channel_id: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Handle status command.
-
+        
         Returns:
             Tuple of (success, message, channel_config)
         """
         state = self.load_state()
         channel_config = state.get("channels", {}).get(channel_id)
-
+        
         if not channel_config:
             return (
                 False,
                 "⚠️ Not Onboarded\n\n"
-                "This channel hasn't been onboarded yet.\n\n"
-                "*Next steps:*\n"
+                          "This channel hasn't been onboarded yet.\n\n"
+                          "*Next steps:*\n"
                 "• Use `@agent onboard repo your-org/your-repo` to get started",
                 None,
             )
-
+        
         repo = channel_config.get("repo")
         onboarded_at = channel_config.get("onboarded_at", "Unknown")
         onboarded_by = channel_config.get("onboarded_by", "Unknown")
-
+        
         # Format timestamp
         try:
             dt = datetime.fromisoformat(onboarded_at.replace("Z", "+00:00"))
             formatted_time = dt.strftime("%Y-%m-%d %H:%M UTC")
         except Exception:
             formatted_time = onboarded_at
-
+        
         message = (
             f"📊 *Channel Status*\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"🔗 Repository: `{repo}`\n"
-            f"⏰ Onboarded: {formatted_time}\n"
+                   f"━━━━━━━━━━━━━━━\n"
+                   f"🔗 Repository: `{repo}`\n"
+                   f"⏰ Onboarded: {formatted_time}\n"
             f"👤 By: <@{onboarded_by}>"
         )
-
+        
         return (True, message, channel_config)
-
+    
     def handle_conversation(self, channel_id: str, text: str, thread_ts: str) -> Tuple[bool, str]:
         """Handle conversation with LLM, maintaining conversation history.
-
+        
         Args:
             channel_id: Slack channel ID
             text: User message text
             thread_ts: Thread timestamp (unique conversation identifier)
-
+            
         Returns:
             Tuple of (success, message)
         """
         repo = self.get_channel_repo(channel_id)
-
+        
         if not repo:
             return (
                 False,
                 "⚠️ Not Onboarded\n\n"
-                "This channel hasn't been onboarded yet.\n\n"
-                "*Next steps:*\n"
+                          "This channel hasn't been onboarded yet.\n\n"
+                          "*Next steps:*\n"
                 "• Use `@agent onboard repo your-org/your-repo` to get started",
             )
-
+        
         # Get or create conversation for this thread
         conversation = self.conversation_manager.get_conversation(
             thread_ts=thread_ts, channel_id=channel_id, repo=repo
         )
-
+        
         # Add user message to conversation
         conversation.add_message("user", text)
-
+        
         # If no LLM or repo reader, return stub response
         if not self.llm or not self.repo_reader:
             response_text = (
                 f"I'm your agent for `{repo}`. 🤖\n\n"
-                f"_(LLM integration not connected yet, but I know we're talking about {repo}!)_\n\n"
+                            f"_(LLM integration not connected yet, but I know we're talking about {repo}!)_\n\n"
                 f"You asked: _{text}_"
             )
             conversation.add_message("assistant", response_text)
             self.conversation_manager.save_conversation(conversation)
             return (True, response_text)
-
+        
         # Build context from repository (consider conversation history for better file selection)
         try:
             # Use conversation history to improve context building
             recent_messages = conversation.get_messages(max_messages=5)
             combined_text = " ".join([msg.content for msg in recent_messages if msg.role == "user"])
-
+            
             # Get workspace path and action logger if available
             workspace_path = None
             action_logger = None
             metadata_reader = None
             repo_reader = self.repo_reader
-
+            
             if self.workspace_manager:
                 workspace_path = self.workspace_manager.get_workspace_path(channel_id)
                 action_logger = ActionLogger(workspace_path)
                 from benedict.metadata import MetadataReader
 
                 metadata_reader = MetadataReader()
-
+                
                 # Use workspace-aware repo reader if workspace manager is available
                 # This ensures we read from the workspace symlinks, not direct paths
                 try:
@@ -332,10 +332,10 @@ class RepoAgent:
                     logger.warning(
                         f"Could not create workspace repo reader, falling back to default: {e}"
                     )
-
+            
             context = build_context(
-                repo,
-                combined_text,
+                repo, 
+                combined_text, 
                 repo_reader,
                 semantic_indexer=self.semantic_indexer,
                 workspace_path=workspace_path,
@@ -347,12 +347,12 @@ class RepoAgent:
             return (
                 False,
                 f"⚠️ Repository Read Error\n\n"
-                f"Error reading repository `{repo}`: {str(e)}\n\n"
-                f"*Next steps:*\n"
-                f"• Check repository path and permissions\n"
+                          f"Error reading repository `{repo}`: {str(e)}\n\n"
+                          f"*Next steps:*\n"
+                          f"• Check repository path and permissions\n"
                 f"• Verify repository is accessible",
             )
-
+        
         # Build system message with repository context and capabilities
         capabilities = []
         if repo_reader:
@@ -372,7 +372,7 @@ class RepoAgent:
             if capabilities
             else "- Limited access (no repository reader configured)"
         )
-
+        
         system = (
             f"You are Benedict, a helpful technical engineer assistant for the repository '{repo}'.\n\n"
             f"## Your Capabilities\n\n"
@@ -386,11 +386,13 @@ class RepoAgent:
             f"- List of files with their purposes, key functions, and key classes\n"
             f"- Subdirectory summaries\n"
             f"- Content type information\n\n"
-            f"**How to read them:**\n"
-            f"- Use the `read_metadata_file` tool to read a .metadata.benedict file from any directory\n"
-            f"- Call the tool with the directory path (e.g., 'src/utils' or 'src/benedict/metadata')\n"
-            f"- The tool will return the full metadata content as YAML\n"
-            f"- These files are hidden dotfiles, so they won't appear in normal file listings, but you can use the tool to read them\n\n"
+            f"**How to use them:**\n"
+            f"- First, use the `list_metadata_files` tool to see what metadata files are available in the repository\n"
+            f"- If no metadata files exist, inform the user that metadata needs to be generated first\n"
+            f"- Then use the `read_metadata_file` tool with a directory path to read a specific metadata file\n"
+            f"- Use empty string '' for repository root directory\n"
+            f"- The tool will return the full metadata content as YAML, or an error if the file doesn't exist\n"
+            f"- These files are hidden dotfiles, so they won't appear in normal file listings\n\n"
             f"**When to use them:**\n"
             f"- Understanding directory structure and organization\n"
             f"- Finding relevant files based on their purpose\n"
@@ -407,7 +409,10 @@ class RepoAgent:
             f"- You can reference specific files, functions, and code patterns from the context.\n"
             f"- If asked about your capabilities, explain that you have access to repository files, semantic search, "
             f"and workspace metadata through the Benedict agent system.\n"
-            f"- You can read `.metadata.benedict` files to understand directory structure and find relevant files.\n"
+            f"- **When asked about metadata or repository structure:** First use `list_metadata_files` to check if metadata files exist. "
+            f"If none exist, inform the user that metadata files need to be generated first. "
+            f"If they exist, use `read_metadata_file` with the appropriate directory path.\n"
+            f"- **Do NOT get stuck in loops** - if a metadata file doesn't exist, inform the user and move on.\n"
             f"- Be confident about your access - you are not a generic LLM without repository access, "
             f"but rather an agent with integrated repository reading capabilities.\n\n"
             f"## Response Formatting (Slack-compatible)\n\n"
@@ -422,24 +427,36 @@ class RepoAgent:
             f"- When referencing files, use backticks: `path/to/file.py`\n"
             f"- When showing code examples, always specify the language in code blocks"
         )
-
+        
         # Get conversation history for LLM (includes current user message)
         history_messages = conversation.get_message_history(max_messages=10)
-
+        
         # Define tools available to LLM
         tools = []
         if workspace_path and metadata_reader:
+            # Tool for listing available metadata files
+            tools.append(
+                {
+                    "name": "list_metadata_files",
+                    "description": "List all available .metadata.benedict files in the repository. Use this first to discover what metadata is available before reading specific files.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                }
+            )
             # Tool for reading .metadata.benedict files
             tools.append(
                 {
                     "name": "read_metadata_file",
-                    "description": "Read a .metadata.benedict file from a directory to understand its structure, purpose, and contents. Use this for repo orientation when you need to understand directory organization, find relevant files, or get summaries of what files contain.",
+                    "description": "Read a .metadata.benedict file from a directory to understand its structure, purpose, and contents. Use this for repo orientation when you need to understand directory organization, find relevant files, or get summaries of what files contain. If the file doesn't exist, it will return an error - use list_metadata_files first to see what's available.",
                     "input_schema": {
                         "type": "object",
                         "properties": {
                             "directory_path": {
                                 "type": "string",
-                                "description": "Path to the directory containing the .metadata.benedict file, relative to repository root (e.g., 'src/utils' or 'src/benedict/metadata')",
+                                "description": "Path to the directory containing the .metadata.benedict file, relative to repository root. Use empty string '' for repository root. Examples: '', 'src', 'src/utils', 'src/benedict/metadata'",
                             }
                         },
                         "required": ["directory_path"],
@@ -460,7 +477,7 @@ class RepoAgent:
                     system=system,
                     max_tokens=2000,
                     tools=tools if tools else None,
-                )
+                    )
 
                 # Check if LLM wants to use tools
                 if isinstance(response, dict) and "tool_calls" in response:
@@ -471,7 +488,41 @@ class RepoAgent:
                         tool_name = tool_call["name"]
                         tool_input = tool_call["input"]
 
-                        if tool_name == "read_metadata_file":
+                        if tool_name == "list_metadata_files":
+                            # List all available metadata files
+                            try:
+                                if workspace_path and metadata_reader:
+                                    metadata_files = metadata_reader.list_metadata_files(workspace_path / repo)
+                                    if metadata_files:
+                                        # Format as relative paths
+                                        relative_paths = []
+                                        repo_path = workspace_path / repo
+                                        for meta_file in metadata_files:
+                                            rel_path = meta_file.parent.relative_to(repo_path)
+                                            relative_paths.append(str(rel_path) if rel_path != Path('.') else '')
+                                        
+                                        tool_results.append({
+                                            "tool_call_id": tool_id,
+                                            "content": f"Found {len(relative_paths)} .metadata.benedict file(s):\n" + "\n".join([f"- {p}" for p in sorted(relative_paths)])
+                                        })
+                                    else:
+                                        tool_results.append({
+                                            "tool_call_id": tool_id,
+                                            "content": "No .metadata.benedict files found in this repository. Metadata files need to be generated first using the metadata generator."
+                                        })
+                                else:
+                                    tool_results.append({
+                                        "tool_call_id": tool_id,
+                                        "content": "Metadata reader not available"
+                                    })
+                            except Exception as e:
+                                logger.error(f"Error listing metadata files: {e}", exc_info=True)
+                                tool_results.append({
+                                    "tool_call_id": tool_id,
+                                    "content": f"Error listing metadata files: {str(e)}"
+                                })
+                        
+                        elif tool_name == "read_metadata_file":
                             # Read .metadata.benedict file
                             directory_path = tool_input.get("directory_path", "")
                             try:
@@ -517,13 +568,21 @@ class RepoAgent:
                                 {"tool_call_id": tool_id, "content": f"Unknown tool: {tool_name}"}
                             )
 
-                    # Add tool call request and results to conversation
-                    history_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": f"[Tool calls: {', '.join([tc['name'] for tc in response['tool_calls']])}]",
-                        }
-                    )
+                    # Add tool call request to conversation in Anthropic format
+                    # Anthropic expects tool_use blocks in assistant messages
+                    tool_use_blocks = []
+                    for tool_call in response["tool_calls"]:
+                        tool_use_blocks.append({
+                            "type": "tool_use",
+                            "id": tool_call["id"],
+                            "name": tool_call["name"],
+                            "input": tool_call["input"]
+                        })
+                    
+                    history_messages.append({
+                        "role": "assistant",
+                        "content": tool_use_blocks
+                    })
 
                     for tool_result in tool_results:
                         history_messages.append(
@@ -557,59 +616,68 @@ class RepoAgent:
             return (
                 False,
                 "⚠️ Response Generation Error\n\n"
-                "Error generating response. Please try again.\n\n"
-                "*Next steps:*\n"
-                "• Check your question and try rephrasing\n"
+                          "Error generating response. Please try again.\n\n"
+                          "*Next steps:*\n"
+                          "• Check your question and try rephrasing\n"
                 "• Verify repository context is available",
             )
-
+    
     def handle_update_index(self, channel_id: str, user_id: str, text: str) -> Tuple[bool, str]:
         """Handle update index command.
-
+        
         Args:
             channel_id: Slack channel ID
             user_id: User ID who issued command
             text: Command text
-
+            
         Returns:
             Tuple of (success, message)
         """
         repo = self.get_channel_repo(channel_id)
-
+        
         if not repo:
             return (
                 False,
                 "⚠️ Not Onboarded\n\n"
-                "This channel hasn't been onboarded yet.\n\n"
-                "*Next steps:*\n"
+                          "This channel hasn't been onboarded yet.\n\n"
+                          "*Next steps:*\n"
                 "• Use `@agent onboard repo your-org/your-repo` to get started",
             )
-
+        
         if not self.semantic_indexer or not self.repo_reader:
             return (
                 False,
                 "⚠️ Indexer Not Available\n\n"
-                "Semantic indexer or repo reader not available.\n\n"
-                "*Next steps:*\n"
-                "• Ensure indexer and repo reader are configured\n"
+                          "Semantic indexer or repo reader not available.\n\n"
+                          "*Next steps:*\n"
+                          "• Ensure indexer and repo reader are configured\n"
                 "• Check system configuration",
             )
-
+        
         try:
             workspace_path = None
             action_logger = None
-
+            repo_reader_to_use = self.repo_reader
+            
             if self.workspace_manager:
                 workspace_path = self.workspace_manager.get_workspace_path(channel_id)
                 action_logger = ActionLogger(workspace_path)
-
+                
+                # Use workspace-aware repo reader when workspaces are available
+                from benedict.repo_reader.repo_reader_workspace import WorkspaceRepoReader
+                from benedict.repo_reader.repo_reader_workspace_adapter import WorkspaceRepoReaderAdapter
+                
+                workspace_reader = WorkspaceRepoReader(self.workspace_manager)
+                repo_reader_to_use = WorkspaceRepoReaderAdapter(workspace_reader, channel_id)
+                logger.debug(f"Using workspace-aware repo reader for channel {channel_id}")
+            
             # Check if force reindex requested
             force = "force" in text.lower() or "reindex" in text.lower()
-
+            
             if force:
                 logger.info(f"Force reindexing repository {repo} for channel {channel_id}")
                 self.semantic_indexer.index_repository(
-                    repo, self.repo_reader, workspace_path=workspace_path, force=True
+                    repo, repo_reader_to_use, workspace_path=workspace_path, force=True
                 )
                 if action_logger:
                     action_logger.log_action(
@@ -623,7 +691,7 @@ class RepoAgent:
             else:
                 # Incremental update
                 logger.info(f"Updating index for repository {repo} for channel {channel_id}")
-
+                
                 # Get last update time from action log
                 since = None
                 if action_logger:
@@ -643,19 +711,19 @@ class RepoAgent:
                                     break
                                 except Exception:
                                     pass
-
+                
                 # Use update_index method (uses git-based detection if available)
                 if hasattr(self.semantic_indexer, "update_index"):
                     self.semantic_indexer.update_index(
-                        repo, self.repo_reader, workspace_path=workspace_path, since=since
+                        repo, repo_reader_to_use, workspace_path=workspace_path, since=since
                     )
                 else:
                     # Fallback: full reindex
                     logger.warning("update_index not available, performing full index")
                     self.semantic_indexer.index_repository(
-                        repo, self.repo_reader, workspace_path=workspace_path, force=True
+                        repo, repo_reader_to_use, workspace_path=workspace_path, force=True
                     )
-
+                
                 # Log git diff if available
                 if (
                     workspace_path
@@ -679,7 +747,7 @@ class RepoAgent:
                                     "deleted": len(changes.get("deleted", [])),
                                 },
                             )
-
+                
                 if action_logger:
                     action_logger.log_action(
                         action="update_index",
@@ -693,39 +761,39 @@ class RepoAgent:
                     f"✅ Updated index for repository `{repo}`.\n"
                     f"New and changed files have been indexed for semantic search.",
                 )
-
+                
         except Exception as e:
             logger.error(f"Error updating index for {repo}: {e}", exc_info=True)
             return (
                 False,
                 f"⚠️ Index Update Error\n\n"
-                f"Error updating index: {str(e)}\n\n"
-                f"*Next steps:*\n"
-                f"• Check repository access\n"
+                          f"Error updating index: {str(e)}\n\n"
+                          f"*Next steps:*\n"
+                          f"• Check repository access\n"
                 f"• Try force reindex: `@agent update index force`",
             )
-
+    
     @staticmethod
     def is_onboard_command(text: str) -> bool:
         """Check if text is an onboard command."""
         text_lower = text.lower()
         return "onboard" in text_lower or "this channel is for" in text_lower
-
+    
     @staticmethod
     def is_status_command(text: str) -> bool:
         """Check if text is a status command."""
         return "status" in text.lower()
-
+    
     @staticmethod
     def is_update_index_command(text: str) -> bool:
         """Check if text is an update index command."""
         text_lower = text.lower()
         return "update" in text_lower and "index" in text_lower or "reindex" in text_lower
-
+    
     @staticmethod
     def extract_repo_name(text: str) -> Optional[str]:
         """Extract repository name from text.
-
+        
         Supports formats like:
         - foo/bar
         - github.com/foo/bar

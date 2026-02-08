@@ -303,11 +303,21 @@ class ChromaDBSemanticIndexer:
         files_to_remove = deleted_files + modified_files
         if files_to_remove:
             # Get all chunks for these files
+            # ChromaDB doesn't support combining equality with $in, so we query by repo first
+            # and filter by file_path in Python, or query each file individually
             try:
-                results = collection.get(
-                    where={"repo": repo, "file_path": {"$in": files_to_remove}}
-                )
-                ids_to_delete = results.get("ids", [])
+                ids_to_delete = []
+                # Query for each file individually to avoid ChromaDB query limitations
+                for file_path in files_to_remove:
+                    try:
+                        results = collection.get(
+                            where={"repo": repo, "file_path": file_path}
+                        )
+                        ids_to_delete.extend(results.get("ids", []))
+                    except Exception as e:
+                        logger.debug(f"Error querying chunks for {file_path}: {e}")
+                        continue
+                
                 if ids_to_delete:
                     collection.delete(ids=ids_to_delete)
                     logger.info(

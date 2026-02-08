@@ -74,19 +74,27 @@ class ClaudeLLM:
 
                 if role == "tool":
                     # Tool responses need special handling
+                    tool_call_id = msg.get("tool_call_id")
+                    if not tool_call_id:
+                        logger.warning(f"Tool message missing tool_call_id, skipping")
+                        continue
                     anthropic_messages.append(
                         {
                             "role": "user",
                             "content": [
                                 {
                                     "type": "tool_result",
-                                    "tool_use_id": msg.get("tool_call_id"),
-                                    "content": content,
+                                    "tool_use_id": tool_call_id,
+                                    "content": str(content) if not isinstance(content, (list, dict)) else content,
                                 }
                             ],
                         }
                     )
+                elif role == "assistant" and isinstance(content, list):
+                    # Assistant message with tool_use blocks (from tool call loop)
+                    anthropic_messages.append({"role": role, "content": content})
                 else:
+                    # Regular text message
                     anthropic_messages.append({"role": role, "content": content})
 
             # Prepare API call
