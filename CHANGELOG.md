@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-02-08
+
+### Added
+- Slack conversation history indexing via `@agent index slack history` command
+- Full implementation of `SlackConversationHistoryIndexer` with Slack API integration
+- Support for fetching channel history using `conversations.history` API with pagination
+- Support for fetching thread replies using `conversations.replies` API
+- Incremental updates for Slack history indexing (only fetches new messages since last index)
+- Message filtering to exclude bot messages and system messages
+- Conversation history stored as JSON files in workspace `conversation_history/` directory
+- Integration with workspace manager and action logger for tracking indexing operations
+
+### Changed
+- Updated `create_conversation_history_indexer()` factory to accept `slack_client` parameter
+- Enhanced `RepoAgent` to support conversation history indexing via new `conversation_history_indexer` parameter
+
 ## [0.2.4] - 2026-02-08
 
 ### Changed

@@ -208,28 +208,60 @@ class BlockKitFormatter:
     """Formats messages using Slack Block Kit."""
 
     @staticmethod
-    def create_section(text: str, fields: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Create a section block.
+    def create_section(text: str, fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Create section block(s). Splits into multiple blocks if text exceeds limit.
 
         Args:
             text: Section text (mrkdwn)
             fields: Optional list of field texts for two-column layout
 
         Returns:
-            Section block dictionary
+            List of section block dictionaries (may be multiple if text is long)
         """
-        block: Dict[str, Any] = {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": text[:MAX_TEXT_IN_BLOCK]},  # Enforce limit
-        }
-
+        blocks: List[Dict[str, Any]] = []
+        
         if fields:
-            block["fields"] = [
-                {"type": "mrkdwn", "text": field[:MAX_TEXT_IN_BLOCK]}
-                for field in fields[:10]  # Max 10 fields
-            ]
+            # Handle fields - split if any field is too long
+            processed_fields = []
+            for field in fields[:10]:  # Max 10 fields
+                if len(field) > MAX_TEXT_IN_BLOCK:
+                    # Split long field into multiple fields
+                    chunks = SlackFormatter.split_message(field, max_length=MAX_TEXT_IN_BLOCK - 50)
+                    processed_fields.extend(chunks)
+                else:
+                    processed_fields.append(field)
+            
+            # Group fields into pairs for two-column layout
+            for i in range(0, len(processed_fields), 2):
+                field_pair = processed_fields[i : i + 2]
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": text[:MAX_TEXT_IN_BLOCK] if text else ""},
+                    "fields": [
+                        {"type": "mrkdwn", "text": field[:MAX_TEXT_IN_BLOCK]}
+                        for field in field_pair
+                    ]
+                })
+        else:
+            # Handle text - split if too long
+            if len(text) <= MAX_TEXT_IN_BLOCK:
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": text}
+                })
+            else:
+                # Split text into multiple sections
+                chunks = SlackFormatter.split_message(text, max_length=MAX_TEXT_IN_BLOCK - 50)
+                for i, chunk in enumerate(chunks):
+                    chunk_text = chunk
+                    if i < len(chunks) - 1:
+                        chunk_text += "\n_...continued..._"
+                    blocks.append({
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": chunk_text[:MAX_TEXT_IN_BLOCK]}
+                    })
 
-        return block
+        return blocks
 
     @staticmethod
     def create_divider() -> Dict[str, Any]:
@@ -253,8 +285,8 @@ class BlockKitFormatter:
         return {"type": "header", "text": {"type": "plain_text", "text": text[:150]}}  # Slack limit
 
     @staticmethod
-    def create_code_block(code: str, language: Optional[str] = None) -> Dict[str, Any]:
-        """Create a code block section.
+    def create_code_block(code: str, language: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Create code block section(s). Splits into multiple blocks if code is too long.
 
         Note: Slack doesn't have a native code block type in Block Kit.
         We use a section block with pre-formatted text.
@@ -264,16 +296,57 @@ class BlockKitFormatter:
             language: Optional language for syntax highlighting hint
 
         Returns:
-            Section block with code formatted as mrkdwn
+            List of section blocks with code formatted as mrkdwn (may be multiple)
         """
-        # Format as mrkdwn code block
+        blocks: List[Dict[str, Any]] = []
+        
+        # Calculate overhead for code block formatting
         language_hint = f"{language}\n" if language else ""
-        code_text = f"```{language_hint}{code}```"
-
-        return {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": code_text[:MAX_TEXT_IN_BLOCK]},
-        }
+        overhead = len(f"```{language_hint}```") + 20  # Buffer for continuation markers
+        max_code_length = MAX_TEXT_IN_BLOCK - overhead
+        
+        if len(code) <= max_code_length:
+            # Single code block
+            code_text = f"```{language_hint}{code}```"
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": code_text[:MAX_TEXT_IN_BLOCK]},
+            })
+        else:
+            # Split code into multiple blocks
+            # Try to split at line boundaries
+            lines = code.split("\n")
+            current_chunk = []
+            current_length = 0
+            
+            for line in lines:
+                line_length = len(line) + 1  # +1 for newline
+                if current_length + line_length > max_code_length and current_chunk:
+                    # Create block with current chunk
+                    chunk_code = "\n".join(current_chunk)
+                    code_text = f"```{language_hint}{chunk_code}\n...```"
+                    blocks.append({
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": code_text[:MAX_TEXT_IN_BLOCK]},
+                    })
+                    # Add continuation header
+                    blocks.append(BlockKitFormatter.create_context(f"_Code block continued ({language or 'code'})..._"))
+                    current_chunk = [line]
+                    current_length = line_length
+                else:
+                    current_chunk.append(line)
+                    current_length += line_length
+            
+            # Add final chunk
+            if current_chunk:
+                chunk_code = "\n".join(current_chunk)
+                code_text = f"```{language_hint}{chunk_code}```"
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": code_text[:MAX_TEXT_IN_BLOCK]},
+                })
+        
+        return blocks
 
     @staticmethod
     def create_context(text: str) -> Dict[str, Any]:
@@ -313,7 +386,11 @@ class BlockKitFormatter:
 
         # Simple text message
         if not use_block_kit:
-            return {"text": formatted_text[:MAX_MESSAGE_LENGTH]}
+            if len(formatted_text) > MAX_MESSAGE_LENGTH:
+                # Truncate with indicator
+                truncated = formatted_text[:MAX_MESSAGE_LENGTH - 50]
+                return {"text": f"{truncated}\n\n_...message truncated (too long)_"}
+            return {"text": formatted_text}
 
         # Block Kit message
         blocks: List[Dict[str, Any]] = []
@@ -347,9 +424,10 @@ class BlockKitFormatter:
                     # Remove heading from section text
                     section = re.sub(r"^\*{2}.+?\*{2}\s*\n?", "", section)
 
-                # Add section content
+                # Add section content (may return multiple blocks)
                 if section:
-                    blocks.append(BlockKitFormatter.create_section(section))
+                    section_blocks = BlockKitFormatter.create_section(section)
+                    blocks.extend(section_blocks)
 
                 # Add divider between sections (except after last)
                 if section != sections[-1]:
@@ -359,7 +437,8 @@ class BlockKitFormatter:
             for full_match, language, code_content in code_blocks:
                 if blocks:  # Add divider before code block if there are other blocks
                     blocks.append(BlockKitFormatter.create_divider())
-                blocks.append(BlockKitFormatter.create_code_block(code_content, language))
+                code_blocks_list = BlockKitFormatter.create_code_block(code_content, language)
+                blocks.extend(code_blocks_list)
         else:
             # Simple Block Kit: just format the text as sections
             # Split by double newlines (paragraphs)
@@ -370,7 +449,8 @@ class BlockKitFormatter:
                 if not paragraph:
                     continue
 
-                blocks.append(BlockKitFormatter.create_section(paragraph))
+                paragraph_blocks = BlockKitFormatter.create_section(paragraph)
+                blocks.extend(paragraph_blocks)
 
                 # Add divider between paragraphs (except after last)
                 if i < len(paragraphs) - 1:
@@ -412,11 +492,10 @@ class BlockKitFormatter:
         # Split fields into groups of 2 for two-column layout
         for i in range(0, len(field_texts), 2):
             field_pair = field_texts[i : i + 2]
-            blocks.append(
-                BlockKitFormatter.create_section(
-                    text="", fields=field_pair  # Empty text, using fields only
-                )
+            section_blocks = BlockKitFormatter.create_section(
+                text="", fields=field_pair  # Empty text, using fields only
             )
+            blocks.extend(section_blocks)
 
         return {"blocks": blocks}
 
@@ -441,12 +520,14 @@ class BlockKitFormatter:
         blocks.append(BlockKitFormatter.create_divider())
 
         # Error message
-        blocks.append(BlockKitFormatter.create_section(message))
+        message_blocks = BlockKitFormatter.create_section(message)
+        blocks.extend(message_blocks)
 
         # Next steps if provided
         if next_steps:
             blocks.append(BlockKitFormatter.create_divider())
             steps_text = "\n".join([f"• {step}" for step in next_steps])
-            blocks.append(BlockKitFormatter.create_section(f"*Next steps:*\n{steps_text}"))
+            steps_blocks = BlockKitFormatter.create_section(f"*Next steps:*\n{steps_text}")
+            blocks.extend(steps_blocks)
 
         return {"blocks": blocks}

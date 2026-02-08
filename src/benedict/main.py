@@ -16,10 +16,12 @@ from benedict.protocols import (
     create_repo_reader,
     create_semantic_indexer,
     create_conversation_repository,
+    create_conversation_history_indexer,
 )
 from benedict.slack_app import create_slack_app
 from benedict.workspace import WorkspaceManager
 from benedict.lib.logging import setup_logging, get_logger
+from slack_sdk import WebClient
 
 # Configure logging first
 setup_logging()
@@ -169,6 +171,20 @@ def main():
     conversation_repository = create_conversation_repository(provider="json", state_file=state_file)
     logger.info(f"✅ Conversation repository initialized (JSON at {state_file})")
 
+    # Create Slack WebClient for conversation history indexing
+    slack_client = WebClient(token=bot_token)
+
+    # Create conversation history indexer (optional)
+    conversation_history_indexer = None
+    try:
+        conversation_history_indexer = create_conversation_history_indexer(
+            platform="slack", slack_client=slack_client
+        )
+        logger.info("✅ Conversation history indexer initialized (Slack)")
+    except Exception as e:
+        logger.warning(f"⚠️ Conversation history indexer not available: {e}")
+        logger.info("Slack history indexing will not be available")
+
     # Create agent with dependencies
     agent = RepoAgent(
         state_file=state_file,
@@ -177,6 +193,7 @@ def main():
         semantic_indexer=semantic_indexer,
         conversation_repository=conversation_repository,
         workspace_manager=workspace_manager,
+        conversation_history_indexer=conversation_history_indexer,
     )
 
     # Initialize state file if it doesn't exist

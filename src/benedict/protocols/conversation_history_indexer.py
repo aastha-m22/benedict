@@ -76,11 +76,14 @@ class ConversationHistoryIndexer(Protocol):
         ...
 
 
-def create_conversation_history_indexer(platform: str = "slack") -> ConversationHistoryIndexer:
+def create_conversation_history_indexer(
+    platform: str = "slack", slack_client=None
+) -> ConversationHistoryIndexer:
     """Factory function to create ConversationHistoryIndexer instance.
 
     Args:
         platform: Platform name ("slack", "discord", "mock", etc.)
+        slack_client: Optional Slack client for Slack platform
 
     Returns:
         ConversationHistoryIndexer instance
@@ -91,7 +94,7 @@ def create_conversation_history_indexer(platform: str = "slack") -> Conversation
     if platform == "slack":
         from benedict.indexers.slack_history_indexer import SlackConversationHistoryIndexer
 
-        return SlackConversationHistoryIndexer()
+        return SlackConversationHistoryIndexer(slack_client=slack_client)
     elif platform == "mock":
         from benedict.indexers.slack_history_indexer import MockConversationHistoryIndexer
 

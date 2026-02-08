@@ -635,6 +635,8 @@ class ChromaDBSemanticIndexer:
             ".env",
             "ENV",
             "virtualenv",
+            "build-env",  # Common build environment directory
+            "env-build",  # Alternative naming
             "node_modules",
             ".node_modules",
             "__pycache__",
@@ -673,7 +675,13 @@ class ChromaDBSemanticIndexer:
         for file_path in files:
             # Skip files in excluded directories
             path_parts = file_path.split("/")
-            if any(part in exclude_dirs or part.endswith(".egg-info") for part in path_parts):
+            if any(
+                part in exclude_dirs
+                or part.endswith(".egg-info")
+                or part.endswith(".dist-info")
+                or part == "site-packages"
+                for part in path_parts
+            ):
                 continue
 
             # Check extension
@@ -830,6 +838,12 @@ class ChromaDBSemanticIndexer:
             skip_patterns = {
                 "venv",
                 ".venv",
+                "env",
+                ".env",
+                "ENV",
+                "virtualenv",
+                "build-env",  # Common build environment directory
+                "env-build",  # Alternative naming
                 "__pycache__",
                 ".mypy_cache",
                 ".pytest_cache",

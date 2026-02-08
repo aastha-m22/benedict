@@ -10,7 +10,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
-from benedict.protocols import LLM, RepoReader, SemanticIndexer, ConversationRepository
+from benedict.protocols import (
+    LLM,
+    RepoReader,
+    SemanticIndexer,
+    ConversationRepository,
+    ConversationHistoryIndexer,
+)
 from benedict.models import ConversationManager
 from benedict.utils import build_context
 from benedict.workspace import WorkspaceManager, ActionLogger
@@ -33,6 +39,7 @@ class RepoAgent:
         semantic_indexer: Optional[SemanticIndexer] = None,
         conversation_repository: Optional[ConversationRepository] = None,
         workspace_manager: Optional[WorkspaceManager] = None,
+        conversation_history_indexer: Optional[ConversationHistoryIndexer] = None,
     ):
         """Initialize repository agent.
 
@@ -43,12 +50,14 @@ class RepoAgent:
             semantic_indexer: Optional semantic indexer for intelligent file selection
             conversation_repository: Optional conversation repository (created from state_file if None)
             workspace_manager: Optional workspace manager for workspace operations
+            conversation_history_indexer: Optional conversation history indexer for Slack history
         """
         self.state_file = Path(state_file)
         self.llm = llm
         self.repo_reader = repo_reader
         self.semantic_indexer = semantic_indexer
         self.workspace_manager = workspace_manager
+        self.conversation_history_indexer = conversation_history_indexer
         self.metadata_generator = MetadataGenerator() if workspace_manager else None
 
         # Create conversation repository if not provided
@@ -590,11 +599,163 @@ class RepoAgent:
         """Check if text is a status command."""
         return "status" in text.lower()
 
+    def handle_index_slack_history(
+        self, channel_id: str, user_id: str, text: str
+    ) -> Tuple[bool, str]:
+        """Handle index Slack history command.
+
+        Args:
+            channel_id: Slack channel ID
+            user_id: User ID who issued command
+            text: Command text
+
+        Returns:
+            Tuple of (success, message)
+        """
+        repo = self.get_channel_repo(channel_id)
+
+        if not repo:
+            return (
+                False,
+                "⚠️ Not Onboarded\n\n"
+                "This channel hasn't been onboarded yet.\n\n"
+                "*Next steps:*\n"
+                "• Use `@agent onboard repo your-org/your-repo` to get started",
+            )
+
+        if not self.conversation_history_indexer:
+            return (
+                False,
+                "⚠️ Slack History Indexer Not Available\n\n"
+                "Slack conversation history indexer not configured.\n\n"
+                "*Next steps:*\n"
+                "• Ensure indexer is configured in system\n"
+                "• Check system configuration",
+            )
+
+        if not self.workspace_manager:
+            return (
+                False,
+                "⚠️ Workspace Manager Not Available\n\n"
+                "Workspace manager not configured.\n\n"
+                "*Next steps:*\n"
+                "• Ensure workspace manager is configured\n"
+                "• Check system configuration",
+            )
+
+        try:
+            workspace_path = self.workspace_manager.get_workspace_path(channel_id)
+            action_logger = ActionLogger(workspace_path)
+
+            # Check if force reindex requested
+            force = "force" in text.lower() or "reindex" in text.lower()
+
+            if force:
+                logger.info(
+                    f"Force indexing Slack history for channel {channel_id} "
+                    f"in workspace {workspace_path}"
+                )
+                self.conversation_history_indexer.index_conversations(
+                    context_id=channel_id,
+                    workspace_path=workspace_path,
+                    semantic_indexer=self.semantic_indexer,
+                )
+                if action_logger:
+                    action_logger.log_action(
+                        action="force_index_slack_history",
+                        content_type="conversation",
+                        resource=channel_id,
+                    )
+                return (
+                    True,
+                    f"✅ Force indexed Slack conversation history for this channel.\n"
+                    f"All messages have been indexed.",
+                )
+            else:
+                # Incremental update
+                logger.info(
+                    f"Updating Slack history index for channel {channel_id} "
+                    f"in workspace {workspace_path}"
+                )
+
+                # Get last update time from action log
+                since = None
+                if action_logger:
+                    recent_actions = action_logger.get_recent_actions(limit=100)
+                    for action in reversed(recent_actions):
+                        if action.get("action") in [
+                            "index_slack_history",
+                            "update_slack_history",
+                            "force_index_slack_history",
+                        ]:
+                            timestamp_str = action.get("timestamp", "")
+                            if timestamp_str:
+                                try:
+                                    since = datetime.fromisoformat(
+                                        timestamp_str.replace("Z", "+00:00")
+                                    )
+                                    break
+                                except Exception:
+                                    pass
+
+                # Use update_index method for incremental updates
+                if since:
+                    self.conversation_history_indexer.update_index(
+                        context_id=channel_id,
+                        workspace_path=workspace_path,
+                        since=since,
+                        semantic_indexer=self.semantic_indexer,
+                    )
+                else:
+                    # No previous index, do full index
+                    self.conversation_history_indexer.index_conversations(
+                        context_id=channel_id,
+                        workspace_path=workspace_path,
+                        semantic_indexer=self.semantic_indexer,
+                    )
+
+                if action_logger:
+                    action_logger.log_action(
+                        action="update_slack_history",
+                        content_type="conversation",
+                        resource=channel_id,
+                        since=since.isoformat() if since else None,
+                    )
+
+                return (
+                    True,
+                    f"✅ Updated Slack conversation history index for this channel.\n"
+                    f"New messages have been indexed.",
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error indexing Slack history for channel {channel_id}: {e}", exc_info=True
+            )
+            return (
+                False,
+                f"⚠️ Slack History Index Error\n\n"
+                f"Error indexing Slack history: {str(e)}\n\n"
+                f"*Next steps:*\n"
+                f"• Check Slack API permissions\n"
+                f"• Try force reindex: `@agent index slack history force`",
+            )
+
     @staticmethod
     def is_update_index_command(text: str) -> bool:
         """Check if text is an update index command."""
         text_lower = text.lower()
         return "update" in text_lower and "index" in text_lower or "reindex" in text_lower
+
+    @staticmethod
+    def is_index_slack_history_command(text: str) -> bool:
+        """Check if text is an index Slack history command."""
+        text_lower = text.lower()
+        return (
+            ("index" in text_lower and "slack" in text_lower and "history" in text_lower)
+            or ("index" in text_lower and "conversation" in text_lower)
+            or ("index" in text_lower and "channel" in text_lower and "history" in text_lower)
+        )
 
     @staticmethod
     def extract_repo_name(text: str) -> Optional[str]:

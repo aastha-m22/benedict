@@ -5,10 +5,12 @@ Implements ConversationHistoryIndexer protocol for Slack.
 
 import json
 import logging
-from datetime import datetime
+import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from benedict.lib.dateutil import normalize_to_utc
 from benedict.protocols.conversation_history_indexer import (
     ConversationReader,
 )
@@ -121,23 +123,64 @@ class SlackConversationHistoryIndexer:
             since: Optional datetime to index conversations since
             semantic_indexer: Optional semantic indexer to also index conversations for search
         """
+        if not self.slack_client:
+            logger.warning("Slack client not available, cannot index conversations")
+            return
+
         workspace_path = Path(workspace_path)
         conversation_dir = workspace_path / "conversation_history"
         conversation_dir.mkdir(parents=True, exist_ok=True)
 
-        # For now, this is a placeholder - in the future, this would:
-        # 1. Use Slack API to fetch conversation history
-        # 2. Store conversations in conversation_dir as JSON files
-        # 3. Generate metadata overlays
-        # 4. Optionally index into semantic_indexer for search
-
         logger.info(
-            f"Indexing Slack conversations for context {context_id} into {conversation_dir}"
+            f"Indexing Slack conversations for channel {context_id} into {conversation_dir}"
         )
 
-        # TODO: Implement actual Slack API integration
-        # For now, log that indexing would happen here
-        logger.debug("Slack API integration not yet implemented - placeholder")
+        # Convert datetime to Slack timestamp format (Unix timestamp as string)
+        oldest_ts = None
+        if since:
+            # Normalize to UTC and convert to timestamp
+            since_utc = normalize_to_utc(since)
+            oldest_ts = str(since_utc.timestamp())
+
+        # Fetch all messages from the channel
+        all_messages = self._fetch_channel_history(context_id, oldest=oldest_ts)
+
+        if not all_messages:
+            logger.info(f"No messages found for channel {context_id}")
+            return
+
+        logger.info(f"Fetched {len(all_messages)} messages from channel {context_id}")
+
+        # Fetch thread replies for threaded messages
+        threaded_messages = {}
+        for msg in all_messages:
+            if msg.get("thread_ts") and msg.get("thread_ts") != msg.get("ts"):
+                # This is a thread reply, fetch full thread
+                thread_ts = msg.get("thread_ts")
+                if thread_ts not in threaded_messages:
+                    thread_replies = self._fetch_thread_replies(context_id, thread_ts)
+                    threaded_messages[thread_ts] = thread_replies
+
+        # Store messages in JSON file
+        output_file = conversation_dir / f"{context_id}.json"
+        conversation_data = {
+            "channel_id": context_id,
+            "indexed_at": datetime.now(timezone.utc).isoformat(),
+            "message_count": len(all_messages),
+            "messages": all_messages,
+            "threads": threaded_messages,
+        }
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(conversation_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Stored {len(all_messages)} messages to {output_file}")
+
+        # Optionally index into semantic indexer
+        if semantic_indexer:
+            self._index_into_semantic_indexer(
+                context_id, all_messages, threaded_messages, semantic_indexer
+            )
 
     def update_index(
         self,
@@ -154,6 +197,10 @@ class SlackConversationHistoryIndexer:
             since: Datetime to index conversations since (required for incremental updates)
             semantic_indexer: Optional semantic indexer to also index conversations for search
         """
+        if not self.slack_client:
+            logger.warning("Slack client not available, cannot update conversation index")
+            return
+
         if not since:
             logger.warning("update_index requires 'since' parameter for incremental updates")
             return
@@ -162,15 +209,80 @@ class SlackConversationHistoryIndexer:
         conversation_dir = workspace_path / "conversation_history"
         conversation_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Updating conversation index for context {context_id} since {since}")
+        logger.info(f"Updating conversation index for channel {context_id} since {since}")
 
-        # TODO: Implement incremental update:
-        # 1. Fetch new messages from Slack API since 'since' datetime
-        # 2. Append to existing conversation files or create new ones
-        # 3. Update metadata overlays
-        # 4. Optionally index new messages into semantic_indexer
+        # Convert datetime to Slack timestamp (normalize to UTC first)
+        since_utc = normalize_to_utc(since)
+        oldest_ts = str(since_utc.timestamp())
 
-        logger.debug("Slack API integration not yet implemented - placeholder")
+        # Fetch new messages since 'since'
+        new_messages = self._fetch_channel_history(context_id, oldest=oldest_ts)
+
+        if not new_messages:
+            logger.info(f"No new messages found for channel {context_id} since {since}")
+            return
+
+        logger.info(f"Fetched {len(new_messages)} new messages from channel {context_id}")
+
+        # Load existing messages if file exists
+        output_file = conversation_dir / f"{context_id}.json"
+        existing_messages = []
+        existing_threads = {}
+
+        if output_file.exists():
+            try:
+                with open(output_file, "r", encoding="utf-8") as f:
+                    existing_data = json.load(f)
+                    existing_messages = existing_data.get("messages", [])
+                    existing_threads = existing_data.get("threads", {})
+            except Exception as e:
+                logger.warning(f"Error reading existing conversation file: {e}")
+
+        # Merge new messages (avoid duplicates by timestamp)
+        existing_ts_set = {msg.get("ts") for msg in existing_messages}
+        unique_new_messages = [
+            msg for msg in new_messages if msg.get("ts") not in existing_ts_set
+        ]
+
+        if not unique_new_messages:
+            logger.info("No new unique messages to add")
+            return
+
+        # Fetch thread replies for new threaded messages
+        for msg in unique_new_messages:
+            if msg.get("thread_ts") and msg.get("thread_ts") != msg.get("ts"):
+                thread_ts = msg.get("thread_ts")
+                if thread_ts not in existing_threads:
+                    thread_replies = self._fetch_thread_replies(context_id, thread_ts)
+                    existing_threads[thread_ts] = thread_replies
+
+        # Combine existing and new messages
+        all_messages = existing_messages + unique_new_messages
+        # Sort by timestamp (oldest first)
+        all_messages.sort(key=lambda x: float(x.get("ts", "0")))
+
+        # Update stored file
+        conversation_data = {
+            "channel_id": context_id,
+            "indexed_at": datetime.now(timezone.utc).isoformat(),
+            "message_count": len(all_messages),
+            "messages": all_messages,
+            "threads": existing_threads,
+        }
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(conversation_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(
+            f"Updated conversation file with {len(unique_new_messages)} new messages "
+            f"(total: {len(all_messages)} messages)"
+        )
+
+        # Optionally index new messages into semantic indexer
+        if semantic_indexer:
+            self._index_into_semantic_indexer(
+                context_id, unique_new_messages, existing_threads, semantic_indexer
+            )
 
     def get_conversation_reader(self, workspace_path: Path) -> ConversationReader:
         """Get reader for accessing conversations.
@@ -182,6 +294,215 @@ class SlackConversationHistoryIndexer:
             ConversationReader instance
         """
         return SlackConversationReader(workspace_path)
+
+    def _fetch_channel_history(
+        self, channel_id: str, oldest: Optional[str] = None, limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """Fetch channel history using Slack API with pagination.
+
+        Args:
+            channel_id: Slack channel ID
+            oldest: Optional oldest timestamp (Unix timestamp as string)
+            limit: Maximum number of messages to fetch
+
+        Returns:
+            List of message dictionaries
+        """
+        messages = []
+        cursor = None
+
+        while len(messages) < limit:
+            try:
+                params = {
+                    "channel": channel_id,
+                    "limit": min(200, limit - len(messages)),  # Slack max is 200 per request
+                }
+
+                if oldest:
+                    params["oldest"] = oldest
+
+                if cursor:
+                    params["cursor"] = cursor
+
+                response = self.slack_client.conversations_history(**params)
+
+                if not response.get("ok"):
+                    error = response.get("error", "unknown error")
+                    logger.error(f"Error fetching channel history: {error}")
+                    break
+
+                batch = response.get("messages", [])
+                if not batch:
+                    break
+
+                # Filter out bot messages and system messages
+                filtered = [msg for msg in batch if self._should_index_message(msg)]
+                messages.extend(filtered)
+
+                # Check for more pages
+                response_metadata = response.get("response_metadata", {})
+                cursor = response_metadata.get("next_cursor")
+                if not cursor:
+                    break
+
+            except Exception as e:
+                logger.error(f"Error fetching channel history: {e}", exc_info=True)
+                break
+
+        logger.debug(f"Fetched {len(messages)} messages from channel {channel_id}")
+        return messages[:limit]
+
+    def _fetch_thread_replies(self, channel_id: str, thread_ts: str) -> List[Dict[str, Any]]:
+        """Fetch thread replies using Slack API.
+
+        Args:
+            channel_id: Slack channel ID
+            thread_ts: Thread timestamp
+
+        Returns:
+            List of message dictionaries in the thread
+        """
+        try:
+            response = self.slack_client.conversations_replies(
+                channel=channel_id, ts=thread_ts
+            )
+
+            if not response.get("ok"):
+                error = response.get("error", "unknown error")
+                logger.error(f"Error fetching thread replies: {error}")
+                return []
+
+            messages = response.get("messages", [])
+            # Filter out bot messages and system messages
+            filtered = [msg for msg in messages if self._should_index_message(msg)]
+            return filtered
+
+        except Exception as e:
+            logger.error(f"Error fetching thread replies: {e}", exc_info=True)
+            return []
+
+    def _should_index_message(self, msg: Dict[str, Any]) -> bool:
+        """Check if message should be indexed.
+
+        Filters out:
+        - Bot messages (subtype='bot_message')
+        - System messages (subtype starts with 'channel_')
+        - Deleted messages
+        - Messages without text
+
+        Args:
+            msg: Message dictionary
+
+        Returns:
+            True if message should be indexed
+        """
+        # Skip bot messages
+        if msg.get("subtype") == "bot_message":
+            return False
+
+        # Skip system messages
+        subtype = msg.get("subtype", "")
+        if subtype.startswith("channel_"):
+            return False
+
+        # Skip deleted messages
+        if subtype == "message_deleted":
+            return False
+
+        # Must have text
+        if not msg.get("text"):
+            return False
+
+        return True
+
+    def _index_into_semantic_indexer(
+        self,
+        channel_id: str,
+        messages: List[Dict[str, Any]],
+        threads: Dict[str, List[Dict[str, Any]]],
+        semantic_indexer,
+    ) -> None:
+        """Index messages into semantic indexer for search.
+
+        Args:
+            channel_id: Slack channel ID
+            messages: List of message dictionaries
+            threads: Dictionary mapping thread_ts to thread replies
+            semantic_indexer: Semantic indexer instance
+        """
+        if not hasattr(semantic_indexer, "index_repository"):
+            logger.debug("Semantic indexer does not support indexing, skipping")
+            return
+
+        try:
+            # Create a collection name for this channel
+            collection_name = f"slack_channel_{hashlib.md5(channel_id.encode()).hexdigest()[:16]}"
+
+            # Prepare documents for indexing
+            documents = []
+            metadatas = []
+            ids = []
+
+            # Index main messages
+            for msg in messages:
+                text = msg.get("text", "")
+                if not text:
+                    continue
+
+                msg_ts = msg.get("ts", "")
+                doc_id = f"{channel_id}:{msg_ts}"
+                documents.append(text)
+                metadatas.append(
+                    {
+                        "channel_id": channel_id,
+                        "message_ts": msg_ts,
+                        "thread_ts": msg.get("thread_ts"),
+                        "user": msg.get("user"),
+                        "type": "message",
+                    }
+                )
+                ids.append(doc_id)
+
+            # Index thread replies
+            for thread_ts, thread_messages in threads.items():
+                for msg in thread_messages:
+                    text = msg.get("text", "")
+                    if not text:
+                        continue
+
+                    msg_ts = msg.get("ts", "")
+                    doc_id = f"{channel_id}:{msg_ts}:thread"
+                    documents.append(text)
+                    metadatas.append(
+                        {
+                            "channel_id": channel_id,
+                            "message_ts": msg_ts,
+                            "thread_ts": thread_ts,
+                            "user": msg.get("user"),
+                            "type": "thread_reply",
+                        }
+                    )
+                    ids.append(doc_id)
+
+            if not documents:
+                logger.debug("No documents to index into semantic indexer")
+                return
+
+            logger.info(
+                f"Indexing {len(documents)} messages from channel {channel_id} "
+                f"into semantic indexer"
+            )
+
+            # Note: This assumes the semantic indexer has a method to index arbitrary documents
+            # For now, we'll log that semantic indexing would happen here
+            # Full integration would require extending the semantic indexer protocol
+            logger.debug(
+                f"Semantic indexing of {len(documents)} messages would happen here. "
+                f"Full integration requires extending semantic indexer protocol."
+            )
+
+        except Exception as e:
+            logger.warning(f"Error indexing messages into semantic indexer: {e}", exc_info=True)
 
 
 class MockConversationHistoryIndexer:

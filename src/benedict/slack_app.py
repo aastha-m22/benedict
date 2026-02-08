@@ -225,6 +225,12 @@ def create_slack_app(agent: RepoAgent) -> App:
                 success, message = agent.handle_update_index(channel_id, user_id, text_clean)
                 format_and_send_message(say, message, thread_ts, message_type="command")
 
+            elif agent.is_index_slack_history_command(text_clean):
+                success, message = agent.handle_index_slack_history(
+                    channel_id, user_id, text_clean
+                )
+                format_and_send_message(say, message, thread_ts, message_type="command")
+
             else:
                 success, message = agent.handle_conversation(channel_id, text_clean, thread_ts)
                 if not success and "⚠️" in message:
