@@ -310,14 +310,12 @@ class ChromaDBSemanticIndexer:
                 # Query for each file individually to avoid ChromaDB query limitations
                 for file_path in files_to_remove:
                     try:
-                        results = collection.get(
-                            where={"repo": repo, "file_path": file_path}
-                        )
+                        results = collection.get(where={"repo": repo, "file_path": file_path})
                         ids_to_delete.extend(results.get("ids", []))
                     except Exception as e:
                         logger.debug(f"Error querying chunks for {file_path}: {e}")
                         continue
-                
+
                 if ids_to_delete:
                     collection.delete(ids=ids_to_delete)
                     logger.info(
@@ -831,6 +829,7 @@ class ChromaDBSemanticIndexer:
             # Common directories to skip (venv, cache, build artifacts, etc.)
             skip_patterns = {
                 "venv",
+                ".venv",
                 "__pycache__",
                 ".mypy_cache",
                 ".pytest_cache",
@@ -847,13 +846,19 @@ class ChromaDBSemanticIndexer:
                 ".idea",
                 ".vscode",
                 ".DS_Store",
+                "site-packages",  # Python virtual environment packages
             }
 
             def should_skip_directory(directory: Path) -> bool:
                 """Check if directory should be skipped."""
-                # Skip hidden directories (already handled, but keep for clarity)
+                # Skip hidden directories (check current and all parents)
                 if directory.name.startswith("."):
                     return True
+
+                # Check if any parent directory is hidden (e.g., .venv)
+                for parent in directory.parents:
+                    if parent.name.startswith("."):
+                        return True
 
                 # Skip common build/cache directories
                 if directory.name in skip_patterns:
@@ -861,6 +866,10 @@ class ChromaDBSemanticIndexer:
 
                 # Skip .egg-info directories
                 if directory.name.endswith(".egg-info"):
+                    return True
+
+                # Skip .dist-info directories (Python package metadata)
+                if directory.name.endswith(".dist-info"):
                     return True
 
                 # Skip if any parent is in skip patterns

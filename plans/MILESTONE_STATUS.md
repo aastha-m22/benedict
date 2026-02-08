@@ -37,6 +37,12 @@ This document tracks planned milestones against current implementation status.
 - ✅ Semantic code search with ChromaDB (not in original M1 plan)
 - ✅ Conversation repository pattern (not in original M1 plan)
 - ✅ Mock implementations for all protocols (testing support)
+- ✅ Metadata system (`.metadata.benedict` files) for directory summaries
+- ✅ Workspace management system for per-channel isolated workspaces
+- ✅ Git-based change detection for incremental indexing
+- ✅ Metadata-enhanced semantic search (boosting based on directory metadata)
+- ✅ Workspace-aware repository readers
+- ✅ Update index command for manual reindexing
 
 ### M2: GitHub API Integration
 **Goal**: Read repository files from GitHub API
@@ -98,21 +104,28 @@ This document tracks planned milestones against current implementation status.
 - **Repository Pattern**: ConversationRepository for persistence abstraction
 - **Protocol-Based Design**: All components use protocols for testability
 - **Mock Implementations**: Complete test doubles for all protocols
+- **Metadata System**: `.metadata.benedict` files providing structured directory summaries with file purposes, key functions, and classes
+- **Workspace Management**: Per-channel isolated workspaces with symlink/copy support for repository access
+- **Change Detection**: Git-based incremental indexing to only reindex changed files
+- **Metadata-Enhanced Search**: Semantic search boosted by directory metadata for better relevance
+- **Update Index Command**: Manual reindexing capability via Slack commands
 
 ### 📊 Implementation Statistics
 
 **Files Created:**
-- 17 Python files (protocols + implementations + mocks)
-- 4 Documentation files (README, ARCHITECTURE, CLEANUP_SUMMARY, MILESTONE_STATUS)
-- 1 Makefile
-- 1 requirements.txt
+- 30+ Python files (protocols + implementations + mocks + metadata system + workspace management)
+- 5+ Documentation files (README, ARCHITECTURE, CLEANUP_SUMMARY, MILESTONE_STATUS, CHANGELOG)
+- 1 Makefile (with dev environment automation)
+- 1 pyproject.toml (modern Python packaging)
 
 **Code Organization:**
-- Protocols: 4 (LLM, RepoReader, SemanticIndexer, ConversationRepository)
-- Implementations: 8 (Claude, LocalRepoReader, ChromaDB, JSON, etc.)
-- Mocks: 5 (for testing)
+- Protocols: 5+ (LLM, RepoReader, SemanticIndexer, ConversationRepository, RepoChangeDetector)
+- Implementations: 12+ (Claude, LocalRepoReader, WorkspaceRepoReader, ChromaDB, JSON, GitChangeDetector, etc.)
+- Mocks: 5+ (for testing)
 - Core: 3 (main.py, agent.py, slack_app.py)
-- Utilities: 1 (context.py)
+- Utilities: 2+ (context.py, slack_formatter.py)
+- Metadata: 3+ (metadata_generator.py, metadata_reader.py, content_handlers.py)
+- Workspace: 2+ (workspace_manager.py, action_logger.py)
 
 **Architecture:**
 - ✅ SOLID principles applied
@@ -145,6 +158,10 @@ This document tracks planned milestones against current implementation status.
 2. Established solid architecture foundation (SOLID, protocols, composition)
 3. Created comprehensive testing infrastructure (mocks for all protocols)
 4. Implemented graceful degradation (works without optional components)
+5. Built metadata system for enhanced code understanding and search relevance
+6. Implemented workspace isolation for multi-channel support
+7. Added incremental indexing with git-based change detection for performance
+8. Created dev environment automation with Makefile and uv integration
 
 ### 🔄 Current State vs Original Plans
 
@@ -154,6 +171,11 @@ This document tracks planned milestones against current implementation status.
 - Added semantic search (not in original plans)
 - Added conversation history (not in original M1)
 - Separated concerns (repository pattern for persistence)
+- Added metadata system for directory-level code understanding
+- Implemented workspace management for multi-channel isolation
+- Added git-based incremental indexing for performance
+- Enhanced semantic search with metadata boosting
+- Improved filtering to exclude venv, site-packages, and build artifacts
 
 **What's Ahead:**
 - M2: GitHub API integration (next logical step)
@@ -183,6 +205,10 @@ This document tracks planned milestones against current implementation status.
 ## Notes
 
 - The codebase has evolved beyond the original v0 plan with a more sophisticated architecture
-- M1 was completed with additional enhancements (semantic search, conversation history)
+- M1 was completed with additional enhancements (semantic search, conversation history, metadata system, workspace management)
 - The foundation is solid for adding M2 and beyond
 - All protocols are in place, making it easy to add new implementations
+- Metadata system provides structured code understanding at directory level
+- Workspace management enables multi-channel operation with isolated repository access
+- Incremental indexing significantly improves performance for large repositories
+- Current version: 0.2.6 (as of latest changes)

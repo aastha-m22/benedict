@@ -76,7 +76,7 @@ class ClaudeLLM:
                     # Tool responses need special handling
                     tool_call_id = msg.get("tool_call_id")
                     if not tool_call_id:
-                        logger.warning(f"Tool message missing tool_call_id, skipping")
+                        logger.warning("Tool message missing tool_call_id, skipping")
                         continue
                     anthropic_messages.append(
                         {
@@ -85,7 +85,11 @@ class ClaudeLLM:
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": tool_call_id,
-                                    "content": str(content) if not isinstance(content, (list, dict)) else content,
+                                    "content": (
+                                        str(content)
+                                        if not isinstance(content, (list, dict))
+                                        else content
+                                    ),
                                 }
                             ],
                         }
