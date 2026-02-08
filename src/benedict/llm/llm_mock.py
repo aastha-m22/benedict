@@ -3,7 +3,7 @@
 Mock LLM for testing purposes.
 """
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any, Union
 from benedict.protocols.llm import LLM
 
 logger = logging.getLogger(__name__)
@@ -24,19 +24,21 @@ class MockLLM:
     
     def generate(
         self, 
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         system: str = "",
-        max_tokens: int = 2000
-    ) -> str:
+        max_tokens: int = 2000,
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Union[str, Dict[str, Any]]:
         """Generate mock response.
         
         Args:
-            messages: Conversation history as list of {"role": "user|assistant", "content": "..."}
+            messages: Conversation history as list of {"role": "user|assistant|tool", "content": "..."}
             system: System message/instructions (ignored)
             max_tokens: Maximum tokens (ignored)
+            tools: Optional list of tool definitions (ignored)
             
         Returns:
-            Mock response text
+            Mock response text (never returns tool calls)
         """
         if not messages:
             return "[Mock LLM Response] No messages provided"
@@ -45,7 +47,14 @@ class MockLLM:
         last_user_msg = None
         for msg in reversed(messages):
             if msg.get("role") == "user":
-                last_user_msg = msg.get("content", "")
+                content = msg.get("content", "")
+                # Handle both string and list content
+                if isinstance(content, list):
+                    # Extract text from list content
+                    text_parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
+                    last_user_msg = " ".join(text_parts) if text_parts else str(content)
+                else:
+                    last_user_msg = str(content)
                 break
         
         if not last_user_msg:

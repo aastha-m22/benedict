@@ -34,20 +34,26 @@ class ClaudeLLM:
     
     def generate(
         self, 
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         system: str = "",
-        max_tokens: int = 2000
-    ) -> str:
+        max_tokens: int = 2000,
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Union[str, Dict[str, Any]]:
         """Generate response from conversation messages.
         
         Args:
-            messages: Conversation history as list of {"role": "user|assistant", "content": "..."}
+            messages: Conversation history as list of {"role": "user|assistant|tool", "content": "..."}
                      Must include at least one "user" message.
+                     Tool responses should have role "tool" with "tool_call_id" and "content".
             system: System message/instructions
             max_tokens: Maximum tokens in response
+            tools: Optional list of tool definitions for function calling
             
         Returns:
-            Generated text response
+            If LLM requests tool use:
+                Dict with "tool_calls" key containing list of {"id": str, "name": str, "input": dict}
+            Otherwise:
+                Generated text response string
             
         Raises:
             Exception: If API call fails
@@ -60,16 +66,63 @@ class ClaudeLLM:
             if not any(msg.get("role") == "user" for msg in messages):
                 raise ValueError("messages must include at least one user message")
             
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                system=system if system else None,
-                messages=messages
-            )
+            # Convert messages to Anthropic format
+            anthropic_messages = []
+            for msg in messages:
+                role = msg.get("role")
+                content = msg.get("content", "")
+                
+                if role == "tool":
+                    # Tool responses need special handling
+                    anthropic_messages.append({
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id"),
+                                "content": content
+                            }
+                        ]
+                    })
+                else:
+                    anthropic_messages.append({
+                        "role": role,
+                        "content": content
+                    })
             
-            # Extract text from response
+            # Prepare API call
+            api_kwargs = {
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "messages": anthropic_messages
+            }
+            
+            if system:
+                api_kwargs["system"] = system
+            
+            if tools:
+                api_kwargs["tools"] = tools
+            
+            response = self.client.messages.create(**api_kwargs)
+            
+            # Check if response contains tool use
             if response.content and len(response.content) > 0:
-                return response.content[0].text
+                first_content = response.content[0]
+                
+                if hasattr(first_content, 'type') and first_content.type == 'tool_use':
+                    # LLM wants to use tools - extract all tool calls
+                    tool_calls = []
+                    for content_item in response.content:
+                        if hasattr(content_item, 'type') and content_item.type == 'tool_use':
+                            tool_calls.append({
+                                "id": content_item.id,
+                                "name": content_item.name,
+                                "input": content_item.input
+                            })
+                    return {"tool_calls": tool_calls}
+                else:
+                    # Regular text response
+                    return first_content.text if hasattr(first_content, 'text') else str(first_content)
             else:
                 return ""
                 

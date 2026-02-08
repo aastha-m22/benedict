@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.3] - 2024-12-XX
+## [0.2.4] - 2026-02-08
+
+### Changed
+- Renamed metadata files from `METADATA` to `.metadata.benedict` for better specificity and to avoid conflicts
+- Updated system prompt to include comprehensive documentation on `.metadata.benedict` files
+- Enhanced benedict's ability to discover and read `.metadata.benedict` files through the repo_reader interface
+
+### Breaking Changes
+- Existing `METADATA` files will no longer be recognized. Regenerate metadata files to create new `.metadata.benedict` files.
+
+## [0.2.3] - 2026-02-07
 
 ### Added
 - Configurable chunk size via `BENEDICT_CHUNK_SIZE` environment variable (default: 2000 characters)

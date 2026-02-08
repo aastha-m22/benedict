@@ -81,7 +81,8 @@ class WorkspaceRepoReader:
         files = []
         try:
             for p in full_path.rglob("*"):
-                if p.is_file() and p.name != "METADATA":  # Skip METADATA files
+                # Skip .metadata.benedict files (dotfiles are typically hidden anyway)
+                if p.is_file() and p.name != ".metadata.benedict":
                     rel_path = p.relative_to(full_path)
                     files.append(str(rel_path))
             return sorted(files)

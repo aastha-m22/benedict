@@ -82,7 +82,7 @@ class CodeHandler:
         subdirectories = []
         
         for item in sorted(directory.iterdir()):
-            if item.name.startswith('.') or item.name == 'METADATA':
+            if item.name.startswith('.') or item.name == '.metadata.benedict':
                 continue
             
             if item.is_file():
@@ -301,7 +301,7 @@ class DocumentHandler:
         subdirectories = []
         
         for item in sorted(directory.iterdir()):
-            if item.name.startswith('.') or item.name == 'METADATA':
+            if item.name.startswith('.') or item.name == '.metadata.benedict':
                 continue
             
             if item.is_file() and item.suffix in {'.md', '.txt', '.rst'}:

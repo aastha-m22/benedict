@@ -5,6 +5,7 @@ Core agent logic for handling repository-scoped conversations.
 import json
 import logging
 import re
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -327,7 +328,7 @@ class RepoAgent:
             capabilities.append("- **Semantic search** through the codebase to find relevant files")
         if workspace_path:
             capabilities.append("- **Access workspace metadata** and action logs")
-            capabilities.append("- **Read METADATA overlays** that summarize directory contents")
+            capabilities.append("- **Read .metadata.benedict files** that summarize directory contents")
         
         capabilities_text = "\n".join(capabilities) if capabilities else "- Limited access (no repository reader configured)"
         
@@ -336,6 +337,27 @@ class RepoAgent:
             f"## Your Capabilities\n\n"
             f"You have direct access to the repository through the following mechanisms:\n"
             f"{capabilities_text}\n\n"
+            f"## Using .metadata.benedict Files\n\n"
+            f"`.metadata.benedict` files are YAML-formatted metadata files that provide structured summaries of directory contents. "
+            f"They are hidden dotfiles (start with `.`) located in directories throughout the repository.\n\n"
+            f"**What they contain:**\n"
+            f"- Directory summary and purpose\n"
+            f"- List of files with their purposes, key functions, and key classes\n"
+            f"- Subdirectory summaries\n"
+            f"- Content type information\n\n"
+            f"**How to read them:**\n"
+            f"- Use the `read_metadata_file` tool to read a .metadata.benedict file from any directory\n"
+            f"- Call the tool with the directory path (e.g., 'src/utils' or 'src/benedict/metadata')\n"
+            f"- The tool will return the full metadata content as YAML\n"
+            f"- These files are hidden dotfiles, so they won't appear in normal file listings, but you can use the tool to read them\n\n"
+            f"**When to use them:**\n"
+            f"- Understanding directory structure and organization\n"
+            f"- Finding relevant files based on their purpose\n"
+            f"- Getting quick summaries of what files contain (key functions, classes, purposes)\n"
+            f"- Discovering related files in subdirectories\n\n"
+            f"**File format:**\n"
+            f"The files are YAML with fields like `summary`, `purpose`, `files` (list of file info), and `subdirectories`.\n"
+            f"Each file entry includes `name`, `purpose`, `key_functions`, and `key_classes`.\n\n"
             f"## Repository Context\n\n"
             f"The following context has been automatically gathered from the repository:\n\n"
             f"{context}\n\n"
@@ -344,6 +366,7 @@ class RepoAgent:
             f"- You can reference specific files, functions, and code patterns from the context.\n"
             f"- If asked about your capabilities, explain that you have access to repository files, semantic search, "
             f"and workspace metadata through the Benedict agent system.\n"
+            f"- You can read `.metadata.benedict` files to understand directory structure and find relevant files.\n"
             f"- Be confident about your access - you are not a generic LLM without repository access, "
             f"but rather an agent with integrated repository reading capabilities.\n\n"
             f"## Response Formatting (Slack-compatible)\n\n"
@@ -362,19 +385,113 @@ class RepoAgent:
         # Get conversation history for LLM (includes current user message)
         history_messages = conversation.get_message_history(max_messages=10)
         
-        # Generate response with conversation history
+        # Define tools available to LLM
+        tools = []
+        if workspace_path and metadata_reader:
+            # Tool for reading .metadata.benedict files
+            tools.append({
+                "name": "read_metadata_file",
+                "description": "Read a .metadata.benedict file from a directory to understand its structure, purpose, and contents. Use this for repo orientation when you need to understand directory organization, find relevant files, or get summaries of what files contain.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "directory_path": {
+                            "type": "string",
+                            "description": "Path to the directory containing the .metadata.benedict file, relative to repository root (e.g., 'src/utils' or 'src/benedict/metadata')"
+                        }
+                    },
+                    "required": ["directory_path"]
+                }
+            })
+        
+        # Generate response with conversation history and tools
         try:
-            response = self.llm.generate(
-                messages=history_messages,
-                system=system,
-                max_tokens=2000
-            )
+            max_iterations = 5  # Prevent infinite loops
+            iteration = 0
             
-            # Add assistant response to conversation
-            conversation.add_message("assistant", response)
+            while iteration < max_iterations:
+                iteration += 1
+                
+                response = self.llm.generate(
+                    messages=history_messages,
+                    system=system,
+                    max_tokens=2000,
+                    tools=tools if tools else None
+                )
+                
+                # Check if LLM wants to use tools
+                if isinstance(response, dict) and "tool_calls" in response:
+                    # Handle tool calls
+                    tool_results = []
+                    for tool_call in response["tool_calls"]:
+                        tool_id = tool_call["id"]
+                        tool_name = tool_call["name"]
+                        tool_input = tool_call["input"]
+                        
+                        if tool_name == "read_metadata_file":
+                            # Read .metadata.benedict file
+                            directory_path = tool_input.get("directory_path", "")
+                            try:
+                                if workspace_path and metadata_reader:
+                                    metadata_dir = workspace_path / repo / directory_path
+                                    metadata = metadata_reader.read_metadata(metadata_dir)
+                                    
+                                    if metadata:
+                                        # Format metadata as YAML-like text for LLM
+                                        metadata_text = yaml.dump(metadata, default_flow_style=False, allow_unicode=True)
+                                        tool_results.append({
+                                            "tool_call_id": tool_id,
+                                            "content": f"Successfully read .metadata.benedict from {directory_path}:\n\n{metadata_text}"
+                                        })
+                                    else:
+                                        tool_results.append({
+                                            "tool_call_id": tool_id,
+                                            "content": f"No .metadata.benedict file found in directory: {directory_path}"
+                                        })
+                                else:
+                                    tool_results.append({
+                                        "tool_call_id": tool_id,
+                                        "content": f"Metadata reader not available"
+                                    })
+                            except Exception as e:
+                                logger.error(f"Error reading metadata file {directory_path}: {e}")
+                                tool_results.append({
+                                    "tool_call_id": tool_id,
+                                    "content": f"Error reading .metadata.benedict file: {str(e)}"
+                                })
+                        else:
+                            tool_results.append({
+                                "tool_call_id": tool_id,
+                                "content": f"Unknown tool: {tool_name}"
+                            })
+                    
+                    # Add tool call request and results to conversation
+                    history_messages.append({
+                        "role": "assistant",
+                        "content": f"[Tool calls: {', '.join([tc['name'] for tc in response['tool_calls']])}]"
+                    })
+                    
+                    for tool_result in tool_results:
+                        history_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_result["tool_call_id"],
+                            "content": tool_result["content"]
+                        })
+                    
+                    # Continue loop to get final response
+                    continue
+                else:
+                    # Regular text response - we're done
+                    response_text = response if isinstance(response, str) else str(response)
+                    conversation.add_message("assistant", response_text)
+                    self.conversation_manager.save_conversation(conversation)
+                    return (True, response_text)
+            
+            # If we've exhausted iterations, return last response
+            response_text = response if isinstance(response, str) else "Tool call loop exceeded maximum iterations"
+            conversation.add_message("assistant", response_text)
             self.conversation_manager.save_conversation(conversation)
-            
-            return (True, response)
+            return (True, response_text)
         except Exception as e:
             logger.error(f"LLM error: {e}", exc_info=True)
             return (False, "⚠️ Response Generation Error\n\n"

@@ -1,6 +1,6 @@
 """Metadata Generator
 
-Generates content-agnostic METADATA files for directories.
+Generates content-agnostic .metadata.benedict files for directories.
 """
 import logging
 import yaml
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class MetadataGenerator:
-    """Generates METADATA files for directories."""
+    """Generates .metadata.benedict files for directories."""
     
     def __init__(self):
         """Initialize metadata generator with content handlers."""
@@ -79,26 +79,26 @@ class MetadataGenerator:
         return metadata
     
     def write_metadata(self, directory: Path, metadata: Dict[str, Any]) -> None:
-        """Write METADATA file to directory.
+        """Write .metadata.benedict file to directory.
         
         Args:
             directory: Directory path
             metadata: Metadata dictionary
         """
         directory = Path(directory)
-        metadata_file = directory / "METADATA"
+        metadata_file = directory / ".metadata.benedict"
         
-        # Check if METADATA already exists as a directory (conflict)
+        # Check if .metadata.benedict already exists as a directory (conflict)
         if metadata_file.exists() and metadata_file.is_dir():
-            logger.debug(f"METADATA path exists as directory at {metadata_file}, skipping write")
+            logger.debug(f".metadata.benedict path exists as directory at {metadata_file}, skipping write")
             return
         
         try:
             with open(metadata_file, 'w', encoding='utf-8') as f:
                 yaml.dump(metadata, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            logger.debug(f"Wrote METADATA to {metadata_file}")
+            logger.debug(f"Wrote .metadata.benedict to {metadata_file}")
         except Exception as e:
-            logger.error(f"Error writing METADATA to {metadata_file}: {e}")
+            logger.error(f"Error writing .metadata.benedict to {metadata_file}: {e}")
             raise
     
     def generate_and_write(self, directory: Path, content_type: Optional[str] = None) -> Dict[str, Any]:

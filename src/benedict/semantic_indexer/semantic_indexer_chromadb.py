@@ -38,7 +38,7 @@ class ChromaDBSemanticIndexer:
         
         Args:
             persist_directory: Directory to persist ChromaDB data
-            metadata_generator: Optional metadata generator for creating METADATA overlays
+            metadata_generator: Optional metadata generator for creating .metadata.benedict overlays
             change_detector: Optional change detector for git-based incremental updates
         """
         self.persist_directory = Path(persist_directory)
@@ -635,7 +635,7 @@ class ChromaDBSemanticIndexer:
         return chunks
     
     def _get_file_metadata_text(self, file_path: str, workspace_path: Path, repo: str) -> Optional[str]:
-        """Get file metadata text from METADATA files for inclusion in embeddings.
+        """Get file metadata text from .metadata.benedict files for inclusion in embeddings.
         
         Args:
             file_path: Relative file path within repository
@@ -652,12 +652,12 @@ class ChromaDBSemanticIndexer:
             if not file_full_path.exists():
                 return None
             
-            # Find METADATA file in the file's directory or parent directories
+            # Find .metadata.benedict file in the file's directory or parent directories
             current_dir = file_full_path.parent
             
-            # Walk up the directory tree looking for METADATA files
+            # Walk up the directory tree looking for .metadata.benedict files
             while current_dir != repo_path.parent:
-                metadata_file = current_dir / "METADATA"
+                metadata_file = current_dir / ".metadata.benedict"
                 if metadata_file.exists():
                     try:
                         with open(metadata_file, 'r', encoding='utf-8') as f:
@@ -693,12 +693,12 @@ class ChromaDBSemanticIndexer:
                                 
                                 break
                         
-                        # If file not found in this METADATA, check parent
+                        # If file not found in this .metadata.benedict, check parent
                         current_dir = current_dir.parent
                         continue
                         
                     except Exception as e:
-                        logger.debug(f"Error reading METADATA file {metadata_file}: {e}")
+                        logger.debug(f"Error reading .metadata.benedict file {metadata_file}: {e}")
                         current_dir = current_dir.parent
                         continue
                 

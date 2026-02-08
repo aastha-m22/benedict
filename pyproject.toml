@@ -1,6 +1,6 @@
 [project]
 name = "benedict"
-version = "0.2.3"
+version = "0.2.4"
 description = "A Slack bot that links channels to repositories and provides intelligent, repo-scoped AI agent conversations"
 readme = "README.md"
 requires-python = ">=3.10"

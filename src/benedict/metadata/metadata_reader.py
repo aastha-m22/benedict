@@ -1,6 +1,6 @@
 """Metadata Reader
 
-Reads and searches METADATA files.
+Reads and searches .metadata.benedict files.
 """
 import logging
 import yaml
@@ -23,7 +23,7 @@ class MetadataReader:
             Metadata dictionary or None if not found
         """
         directory = Path(directory)
-        metadata_file = directory / "METADATA"
+        metadata_file = directory / ".metadata.benedict"
         
         if not metadata_file.exists():
             return None
@@ -31,10 +31,10 @@ class MetadataReader:
         try:
             with open(metadata_file, 'r', encoding='utf-8') as f:
                 metadata = yaml.safe_load(f)
-            logger.debug(f"Read METADATA from {metadata_file}")
+            logger.debug(f"Read .metadata.benedict from {metadata_file}")
             return metadata
         except Exception as e:
-            logger.warning(f"Error reading METADATA from {metadata_file}: {e}")
+            logger.warning(f"Error reading .metadata.benedict from {metadata_file}: {e}")
             return None
     
     def search_metadata(
@@ -57,8 +57,8 @@ class MetadataReader:
         results = []
         query_lower = query.lower()
         
-        # Walk through workspace and read all METADATA files
-        for metadata_file in workspace_path.rglob("METADATA"):
+        # Walk through workspace and read all .metadata.benedict files
+        for metadata_file in workspace_path.rglob(".metadata.benedict"):
             metadata = self.read_metadata(metadata_file.parent)
             if not metadata:
                 continue
@@ -95,7 +95,7 @@ class MetadataReader:
         return results
     
     def get_directory_summary(self, directory: Path) -> Optional[str]:
-        """Get summary for a directory from its METADATA file.
+        """Get summary for a directory from its .metadata.benedict file.
         
         Args:
             directory: Directory path
@@ -109,13 +109,13 @@ class MetadataReader:
         return None
     
     def list_metadata_files(self, workspace_path: Path) -> List[Path]:
-        """List all METADATA files in workspace.
+        """List all .metadata.benedict files in workspace.
         
         Args:
             workspace_path: Workspace root path
             
         Returns:
-            List of METADATA file paths
+            List of .metadata.benedict file paths
         """
         workspace_path = Path(workspace_path)
-        return list(workspace_path.rglob("METADATA"))
+        return list(workspace_path.rglob(".metadata.benedict"))
