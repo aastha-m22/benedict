@@ -2,6 +2,7 @@
 
 Pure functions for building context from repository files using semantic search.
 """
+
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -18,10 +19,10 @@ def build_context(
     max_tokens: int = 4000,
     workspace_path: Optional[Path] = None,
     metadata_reader=None,
-    action_logger=None
+    action_logger=None,
 ) -> str:
     """Build relevant context for question using semantic search.
-    
+
     Args:
         repo: Repository name
         question: User question
@@ -31,12 +32,12 @@ def build_context(
         workspace_path: Optional workspace path for metadata and action log
         metadata_reader: Optional metadata reader for including metadata in context
         action_logger: Optional action logger for including recent actions
-        
+
     Returns:
         Formatted context string
     """
     parts = []
-    
+
     # Include recent actions if available
     if action_logger and workspace_path:
         try:
@@ -48,7 +49,7 @@ def build_context(
                 parts.append(action_summary)
         except Exception as e:
             logger.warning(f"Error reading action log: {e}")
-    
+
     # Include metadata summary if available
     if metadata_reader and workspace_path:
         try:
@@ -58,14 +59,16 @@ def build_context(
                 metadata_summary = f"# Repository Metadata: {repo}\n"
                 metadata_summary += f"Summary: {metadata.get('summary', 'N/A')}\n"
                 metadata_summary += f"Purpose: {metadata.get('purpose', 'N/A')}\n"
-                if metadata.get('files'):
-                    metadata_summary += f"\nKey files:\n"
-                    for file_info in metadata.get('files', [])[:5]:
-                        metadata_summary += f"- {file_info.get('name')}: {file_info.get('purpose', 'N/A')}\n"
+                if metadata.get("files"):
+                    metadata_summary += "\nKey files:\n"
+                    for file_info in metadata.get("files", [])[:5]:
+                        metadata_summary += (
+                            f"- {file_info.get('name')}: {file_info.get('purpose', 'N/A')}\n"
+                        )
                 parts.append(metadata_summary)
         except Exception as e:
             logger.warning(f"Error reading metadata: {e}")
-    
+
     # Always include README if it exists
     try:
         readme = repo_reader.read_file(repo, "README.md")
@@ -75,7 +78,7 @@ def build_context(
         logger.debug(f"No README.md found for {repo}")
     except Exception as e:
         logger.warning(f"Error reading README.md for {repo}: {e}")
-    
+
     # Use semantic search if available, otherwise fall back to keyword matching
     if semantic_indexer:
         try:
@@ -87,39 +90,43 @@ def build_context(
                 # Incremental update: check for changes since last index
                 # For now, we'll do a full update on each query (can be optimized later)
                 # In the future, we could track last_index_time and use update_index()
-                logger.debug(f"Repository {repo} already indexed, skipping reindex (use update_index() for incremental updates)")
-            
+                logger.debug(
+                    f"Repository {repo} already indexed, skipping reindex (use update_index() for incremental updates)"
+                )
+
             # Perform semantic search with metadata boosting if available
             results = semantic_indexer.search(
-                repo, 
-                question, 
+                repo,
+                question,
                 top_k=5,
                 workspace_path=workspace_path,
-                metadata_reader=metadata_reader
+                metadata_reader=metadata_reader,
             )
-            
+
             # Group results by file and get full file content
             seen_files = set()
             for result in results:
-                file_path = result['file_path']
+                file_path = result["file_path"]
                 if file_path in seen_files:
                     continue
                 seen_files.add(file_path)
-                
+
                 try:
                     # Get full file content (semantic search gives us chunks)
                     content = repo_reader.read_file(repo, file_path)
                     content = truncate_file_content(content, max_lines=1000)
                     parts.append(f"# {file_path}\n{content}")
-                    logger.debug(f"Added {file_path} to context (semantic match, score: {result['score']:.2f})")
+                    logger.debug(
+                        f"Added {file_path} to context (semantic match, score: {result['score']:.2f})"
+                    )
                 except Exception as e:
                     logger.warning(f"Error reading {file_path}: {e}")
                     continue
-                    
+
         except Exception as e:
             logger.warning(f"Error in semantic search, falling back to keyword matching: {e}")
             # Fall through to keyword matching
-    
+
     # Fallback to keyword matching if semantic search not available or failed
     if not semantic_indexer or len(parts) == 1:  # Only README added
         keywords = extract_keywords(question)
@@ -127,7 +134,7 @@ def build_context(
             try:
                 all_files = repo_reader.list_files(repo)
                 relevant = find_relevant_files(all_files, keywords)
-                
+
                 # Add relevant files (limit to 5)
                 for file_path in relevant[:5]:
                     try:
@@ -140,7 +147,7 @@ def build_context(
                         continue
             except Exception as e:
                 logger.warning(f"Error listing files for {repo}: {e}")
-    
+
     # Combine and truncate to fit token limit
     full_context = "\n\n".join(parts)
     return truncate_to_tokens(full_context, max_tokens)
@@ -148,12 +155,12 @@ def build_context(
 
 def extract_keywords(question: str) -> List[str]:
     """Extract keywords from question.
-    
+
     Simple implementation for M1: extract words longer than 3 characters.
-    
+
     Args:
         question: User question
-        
+
     Returns:
         List of keywords
     """
@@ -166,17 +173,17 @@ def extract_keywords(question: str) -> List[str]:
 
 def find_relevant_files(files: List[str], keywords: List[str]) -> List[str]:
     """Find files matching keywords.
-    
+
     Args:
         files: List of file paths
         keywords: List of keywords to match
-        
+
     Returns:
         List of relevant file paths, sorted by relevance
     """
     if not keywords:
         return []
-    
+
     relevant = []
     for file in files:
         file_lower = file.lower()
@@ -184,7 +191,7 @@ def find_relevant_files(files: List[str], keywords: List[str]) -> List[str]:
         matches = sum(1 for kw in keywords if kw in file_lower)
         if matches > 0:
             relevant.append((matches, file))
-    
+
     # Sort by number of matches (descending)
     relevant.sort(reverse=True, key=lambda x: x[0])
     return [file for _, file in relevant]
@@ -192,44 +199,44 @@ def find_relevant_files(files: List[str], keywords: List[str]) -> List[str]:
 
 def truncate_file_content(content: str, max_lines: int = 1000) -> str:
     """Truncate file content to maximum number of lines.
-    
+
     Args:
         content: File content
         max_lines: Maximum number of lines
-        
+
     Returns:
         Truncated content with indicator if truncated
     """
-    lines = content.split('\n')
+    lines = content.split("\n")
     if len(lines) <= max_lines:
         return content
-    
-    truncated = '\n'.join(lines[:max_lines])
+
+    truncated = "\n".join(lines[:max_lines])
     return truncated + f"\n\n[... file truncated after {max_lines} lines ...]"
 
 
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
     """Truncate text to fit token limit.
-    
+
     Rough estimate: 1 token ≈ 4 characters.
-    
+
     Args:
         text: Text to truncate
         max_tokens: Maximum tokens
-        
+
     Returns:
         Truncated text with indicator if truncated
     """
     # Rough estimate: 1 token ≈ 4 characters
     max_chars = max_tokens * 4
-    
+
     if len(text) <= max_chars:
         return text
-    
+
     truncated = text[:max_chars]
     # Try to truncate at a reasonable boundary (end of line)
-    last_newline = truncated.rfind('\n')
+    last_newline = truncated.rfind("\n")
     if last_newline > max_chars * 0.9:  # If we're close to a newline
         truncated = truncated[:last_newline]
-    
+
     return truncated + "\n\n[... context truncated to fit token limit ...]"

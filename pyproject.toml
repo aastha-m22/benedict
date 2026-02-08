@@ -19,6 +19,7 @@ dev = [
     "pylint",
     "flake8",
     "black",
+    "ruff",
     "pytest",
 ]
 

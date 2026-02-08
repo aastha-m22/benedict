@@ -1,4 +1,4 @@
-.PHONY: help install sync run test clean lint format check deps venv setup recreate-env
+.PHONY: help install install-dev sync sync-dev run test clean format check deps venv setup recreate-env
 
 # Default target
 help:
@@ -6,33 +6,43 @@ help:
 	@echo "======================================"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make install     - Install dependencies with uv"
-	@echo "  make sync        - Sync dependencies with uv (recommended)"
+	@echo "  make setup       - Complete dev environment setup (venv + all deps)"
+	@echo "  make install     - Install production dependencies only"
+	@echo "  make install-dev - Install all dependencies including dev tools"
+	@echo "  make sync        - Sync production dependencies with uv"
+	@echo "  make sync-dev    - Sync all dependencies including dev tools"
 	@echo "  make deps        - Check if dependencies are installed"
-	@echo "  make recreate-env - Remove and recreate virtual environment with dependencies"
+	@echo "  make recreate-env - Remove and recreate virtual environment with all deps"
 	@echo ""
 	@echo "Running:"
 	@echo "  make run         - Run the bot"
 	@echo ""
 	@echo "Development:"
 	@echo "  make test        - Run tests (if available)"
-	@echo "  make lint        - Run linters"
 	@echo "  make format      - Format code"
-	@echo "  make check       - Run all checks (lint + format check)"
+	@echo "  make check       - Run all checks (format check + tests)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean       - Remove cache files and generated files"
 	@echo ""
 
-# Install dependencies
-install:
-	@echo "Installing dependencies with uv..."
+
+check-uv:
 	@if ! command -v uv > /dev/null; then \
 		echo "❌ uv not found. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
 		exit 1; \
 	fi
+# Install dependencies (production only)
+install: check-uv
+	@echo "Installing dependencies with uv..."
 	uv pip install -e .
 	@echo "✅ Dependencies installed"
+
+# Install all dependencies including dev tools
+install-dev:
+	@echo "Installing all dependencies (including dev tools) with uv..."
+	uv pip install -e ".[dev]"
+	@echo "✅ All dependencies (including dev tools) installed"
 
 # Check if dependencies are installed
 deps:
@@ -57,64 +67,24 @@ test:
 	@echo "⚠️  No tests configured yet"
 	@# python3 -m pytest tests/
 
-# Lint code
-lint:
-	@echo "Running linters..."
-	@if command -v pylint > /dev/null; then \
-		pylint --disable=all --enable=E,F *.py || true; \
-	else \
-		echo "⚠️  pylint not installed. Install with: uv pip install pylint"; \
-	fi
-	@if command -v flake8 > /dev/null; then \
-		flake8 *.py --max-line-length=100 --ignore=E501,W503 || true; \
-	else \
-		echo "⚠️  flake8 not installed. Install with: uv pip install flake8"; \
-	fi
-
-# Format code
-format:
+ruff:
 	@echo "Formatting code..."
-	@if command -v black > /dev/null; then \
-		black *.py; \
-		echo "✅ Code formatted"; \
-	else \
-		echo "⚠️  black not installed. Install with: uv pip install black"; \
-	fi
+	ruff check src 2>/dev/null || ruff check src
+	@echo "✅ Code formatted"
 
-# Check code formatting
-check:
-	@echo "Checking code formatting..."
-	@if command -v black > /dev/null; then \
-		black --check *.py || echo "❌ Code needs formatting. Run: make format"; \
-	else \
-		echo "⚠️  black not installed. Install with: uv pip install black"; \
-	fi
+black:
+	@echo "Formatting code..."
+	black src tests 2>/dev/null || black src
+	@echo "✅ Code formatted"
 
-# Clean cache files and generated files
+
+format: black ruff
+check: format test
 clean:
 	@echo "Cleaning up..."
 	find . -type d -name "__pycache__" -exec rm -r {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	find . -type f -name "*.pyo" -delete 2>/dev/null || true
-	find . -type f -name ".DS_Store" -delete 2>/dev/null || true
-	@echo "✅ Cleanup complete"
-
-# Create virtual environment with uv
-venv:
-	@echo "Creating virtual environment with uv..."
-	@if ! command -v uv > /dev/null; then \
-		echo "❌ uv not found. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
-		exit 1; \
-	fi
-	uv venv
-	@echo "✅ Virtual environment created"
-	@echo "Activate with: source .venv/bin/activate"
-
-# Setup development environment
 setup: venv
 	@echo "Setting up development environment..."
-	@echo "Activate virtual environment: source .venv/bin/activate"
-	@echo "Then run: make sync"
 
 # Sync dependencies (uv's recommended way - same as install but clearer intent)
 sync:
@@ -126,20 +96,16 @@ sync:
 	uv pip install -e .
 	@echo "✅ Dependencies synced"
 
+
+# Sync all dependencies including dev tools
+sync-dev: check-uv
+	@echo "Syncing all dependencies (including dev tools) with uv..."
+	uv pip install -e ".[dev]"
+	@echo "✅ All dependencies (including dev tools) synced"
+
 # Recreate virtual environment (nuke and rebuild)
-recreate-env:
+recreate-env: check-uv
 	@echo "Recreating virtual environment..."
-	@if ! command -v uv > /dev/null; then \
-		echo "❌ uv not found. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
-		exit 1; \
-	fi
-	@if [ -d .venv ]; then \
-		echo "Removing existing .venv directory..."; \
-		rm -rf .venv; \
-	fi
-	@echo "Creating new virtual environment..."
 	uv venv
-	@echo "Installing dependencies..."
-	uv pip install -e .
-	@echo "✅ Virtual environment recreated and dependencies installed"
+	@echo "✅ Virtual environment recreated"
 	@echo "Activate with: source .venv/bin/activate"
