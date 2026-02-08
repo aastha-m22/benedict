@@ -422,21 +422,37 @@ class SlackConversationHistoryIndexer:
         threads: Dict[str, List[Dict[str, Any]]],
         semantic_indexer,
     ) -> None:
-        """Index messages into semantic indexer for search.
+        """Index messages into semantic indexer for search with embeddings.
 
         Args:
             channel_id: Slack channel ID
             messages: List of message dictionaries
             threads: Dictionary mapping thread_ts to thread replies
-            semantic_indexer: Semantic indexer instance
+            semantic_indexer: Semantic indexer instance (ChromaDBSemanticIndexer)
         """
-        if not hasattr(semantic_indexer, "index_repository"):
-            logger.debug("Semantic indexer does not support indexing, skipping")
+        if not semantic_indexer:
+            return
+
+        # Check if semantic indexer has the necessary attributes
+        if not hasattr(semantic_indexer, "embedding_model") or not hasattr(
+            semantic_indexer, "client"
+        ):
+            logger.debug("Semantic indexer does not support channel message indexing, skipping")
             return
 
         try:
+            import numpy as np
+
             # Create a collection name for this channel
             collection_name = f"slack_channel_{hashlib.md5(channel_id.encode()).hexdigest()[:16]}"
+
+            # Get or create collection
+            try:
+                collection = semantic_indexer.client.get_collection(collection_name)
+            except Exception:
+                collection = semantic_indexer.client.create_collection(
+                    name=collection_name, metadata={"channel_id": channel_id, "type": "slack_channel"}
+                )
 
             # Prepare documents for indexing
             documents = []
@@ -452,15 +468,21 @@ class SlackConversationHistoryIndexer:
                 msg_ts = msg.get("ts", "")
                 doc_id = f"{channel_id}:{msg_ts}"
                 documents.append(text)
-                metadatas.append(
-                    {
-                        "channel_id": channel_id,
-                        "message_ts": msg_ts,
-                        "thread_ts": msg.get("thread_ts"),
-                        "user": msg.get("user"),
-                        "type": "message",
-                    }
-                )
+                
+                # Build metadata, filtering out None values (ChromaDB doesn't accept None)
+                metadata = {
+                    "channel_id": channel_id,
+                    "message_ts": msg_ts,
+                    "type": "message",
+                    "repo": "slack_channel",  # Use special repo identifier for channels
+                }
+                # Only add optional fields if they're not None
+                if msg.get("thread_ts"):
+                    metadata["thread_ts"] = msg.get("thread_ts")
+                if msg.get("user"):
+                    metadata["user"] = msg.get("user")
+                
+                metadatas.append(metadata)
                 ids.append(doc_id)
 
             # Index thread replies
@@ -473,15 +495,20 @@ class SlackConversationHistoryIndexer:
                     msg_ts = msg.get("ts", "")
                     doc_id = f"{channel_id}:{msg_ts}:thread"
                     documents.append(text)
-                    metadatas.append(
-                        {
-                            "channel_id": channel_id,
-                            "message_ts": msg_ts,
-                            "thread_ts": thread_ts,
-                            "user": msg.get("user"),
-                            "type": "thread_reply",
-                        }
-                    )
+                    
+                    # Build metadata, filtering out None values (ChromaDB doesn't accept None)
+                    metadata = {
+                        "channel_id": channel_id,
+                        "message_ts": msg_ts,
+                        "thread_ts": thread_ts,
+                        "type": "thread_reply",
+                        "repo": "slack_channel",
+                    }
+                    # Only add optional fields if they're not None
+                    if msg.get("user"):
+                        metadata["user"] = msg.get("user")
+                    
+                    metadatas.append(metadata)
                     ids.append(doc_id)
 
             if not documents:
@@ -490,15 +517,35 @@ class SlackConversationHistoryIndexer:
 
             logger.info(
                 f"Indexing {len(documents)} messages from channel {channel_id} "
-                f"into semantic indexer"
+                f"into semantic indexer with embeddings"
             )
 
-            # Note: This assumes the semantic indexer has a method to index arbitrary documents
-            # For now, we'll log that semantic indexing would happen here
-            # Full integration would require extending the semantic indexer protocol
-            logger.debug(
-                f"Semantic indexing of {len(documents)} messages would happen here. "
-                f"Full integration requires extending semantic indexer protocol."
+            # Generate embeddings
+            embeddings = semantic_indexer.embedding_model.encode(documents, show_progress_bar=False)
+
+            # Add to collection in batches (ChromaDB has max batch size limit of ~5461)
+            batch_size = 5000
+            total_batches = (len(documents) + batch_size - 1) // batch_size
+
+            for batch_idx in range(total_batches):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, len(documents))
+
+                batch_documents = documents[start_idx:end_idx]
+                batch_embeddings = embeddings[start_idx:end_idx]
+                batch_metadatas = metadatas[start_idx:end_idx]
+                batch_ids = ids[start_idx:end_idx]
+
+                collection.add(
+                    embeddings=batch_embeddings.tolist(),
+                    documents=batch_documents,
+                    metadatas=batch_metadatas,
+                    ids=batch_ids,
+                )
+
+            logger.info(
+                f"✅ Indexed {len(documents)} messages from channel {channel_id} "
+                f"into semantic indexer with embeddings"
             )
 
         except Exception as e:

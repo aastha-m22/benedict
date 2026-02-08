@@ -178,6 +178,16 @@ def create_slack_app(agent: RepoAgent) -> App:
         raise ValueError("SLACK_BOT_TOKEN not found in environment variables")
     app = App(token=bot_token)
 
+    # Get bot user ID for thread detection
+    bot_user_id = None
+    try:
+        auth_response = app.client.auth_test()
+        if auth_response.get("ok"):
+            bot_user_id = auth_response.get("user_id")
+            logger.info(f"Bot user ID: {bot_user_id}")
+    except Exception as e:
+        logger.warning(f"Could not get bot user ID: {e}")
+
     # Register event handlers
     @app.event("app_mention")
     def handle_app_mention(event, say, client):
@@ -225,12 +235,6 @@ def create_slack_app(agent: RepoAgent) -> App:
                 success, message = agent.handle_update_index(channel_id, user_id, text_clean)
                 format_and_send_message(say, message, thread_ts, message_type="command")
 
-            elif agent.is_index_slack_history_command(text_clean):
-                success, message = agent.handle_index_slack_history(
-                    channel_id, user_id, text_clean
-                )
-                format_and_send_message(say, message, thread_ts, message_type="command")
-
             else:
                 success, message = agent.handle_conversation(channel_id, text_clean, thread_ts)
                 if not success and "⚠️" in message:
@@ -245,5 +249,86 @@ def create_slack_app(agent: RepoAgent) -> App:
                 f"⚠️ Error\n\nSorry, I encountered an error processing your request: {str(e)}"
             )
             format_and_send_message(say, error_message, thread_ts, message_type="error")
+
+    # Register message event handler for automatic background indexing and thread replies
+    @app.event("message")
+    def handle_message(event, say, client):
+        """Handle message events for automatic background indexing and thread replies."""
+        try:
+            # Skip bot messages and messages without text
+            if event.get("subtype") or not event.get("text"):
+                return
+
+            channel_id = event.get("channel")
+            user_id = event.get("user")
+            text = event.get("text", "")
+            thread_ts = event.get("thread_ts")
+            message_ts = event.get("ts")
+
+            if not channel_id:
+                return
+
+            # Skip messages from the bot itself
+            if bot_user_id and user_id == bot_user_id:
+                return
+
+            # Check if channel is onboarded
+            repo = agent.get_channel_repo(channel_id)
+            if not repo:
+                return  # Channel not onboarded, skip processing
+
+            # Check if this is a thread reply where Benedict has already participated
+            is_thread_reply = thread_ts is not None
+            should_respond = False
+
+            if is_thread_reply and bot_user_id:
+                try:
+                    # Check if bot has messages in this thread
+                    thread_replies = client.conversations_replies(
+                        channel=channel_id, ts=thread_ts
+                    )
+                    if thread_replies.get("ok"):
+                        messages = thread_replies.get("messages", [])
+                        # Check if bot has any messages in this thread
+                        bot_has_messages = any(
+                            msg.get("user") == bot_user_id for msg in messages
+                        )
+                        if bot_has_messages:
+                            should_respond = True
+                            logger.info(
+                                f"Detected thread reply to Benedict in thread {thread_ts} "
+                                f"in channel {channel_id}"
+                            )
+                except Exception as e:
+                    logger.debug(f"Error checking thread for bot participation: {e}")
+
+            # If this is a thread reply to Benedict, handle it as a conversation
+            if should_respond:
+                try:
+                    # Use thread_ts as the conversation identifier
+                    success, message = agent.handle_conversation(
+                        channel_id, text, thread_ts or message_ts
+                    )
+                    if not success and "⚠️" in message:
+                        format_and_send_message(say, message, thread_ts, message_type="error")
+                    else:
+                        format_and_send_message(
+                            say, message, thread_ts, message_type="conversation"
+                        )
+                except Exception as e:
+                    logger.error(f"Error handling thread reply: {e}", exc_info=True)
+
+            # Trigger background indexing of new messages
+            # This runs asynchronously and doesn't block the response
+            try:
+                agent.index_new_slack_messages(channel_id)
+            except Exception as e:
+                logger.warning(
+                    f"Error in background indexing for channel {channel_id}: {e}", exc_info=True
+                )
+                # Don't fail - background indexing errors shouldn't affect the app
+
+        except Exception as e:
+            logger.debug(f"Error handling message event: {e}")
 
     return app

@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-02-08
+
+### Fixed
+- Fixed ChromaDB metadata error when indexing Slack messages - now filters out `None` values from metadata before indexing
+- Messages with missing `thread_ts` or `user` fields now index correctly
+
+## [0.3.1] - 2026-02-08
+
+### Added
+- Thread-aware conversation detection - Benedict now responds to messages in threads where it has already participated, without requiring @mention
+- Automatic detection of thread context to understand when users are talking to Benedict
+
+## [0.3.0] - 2026-02-08
+
+### Changed
+- Removed manual `@agent index slack history` command - indexing now happens automatically in the background
+- Slack conversation history indexing is now fully automatic:
+  - Indexes from channel start when channel is onboarded
+  - Automatically indexes new messages as they arrive via message events
+  - Creates embeddings for all messages in ChromaDB for semantic search
+- Messages are now indexed with embeddings for semantic search capabilities
+
+### Added
+- Automatic background indexing of new Slack messages via message event handler
+- Proper embedding generation for Slack messages in semantic indexer
+- `index_new_slack_messages()` method for automatic incremental updates
+
+## [0.2.9] - 2026-02-08
+
+### Added
+- Automatic Slack conversation history indexing when a channel is onboarded
+- Channel history is now indexed from the beginning when `@agent onboard` is run
+- Users are notified that conversation history indexing is in progress during onboarding
+
+## [0.2.8] - 2026-02-08
+
+### Changed
+- Conversation summarization is now a normal query, not a special command
+- When users ask about conversations (e.g., "summarise today's conversations"), the LLM automatically receives conversation history in context
+- Removed special command routing for conversation summarization - it's handled naturally by the LLM
+
+## [0.2.7] - 2026-02-08
+
+### Fixed
+- Improved command detection for summarize conversations command to handle British spelling ("summarise") and typos
+- Command now properly recognizes variations like "summarise todays conversastions"
+
+## [0.2.6] - 2026-02-08
+
+### Added
+- Command to gather and summarize today's conversations via `@agent summarize today` or `@agent gather today's conversations`
+- Automatic LLM-powered summarization for conversations with 3+ threads or 20+ messages
+- Conversation filtering by date (today) and channel
+- Support for extracting key topics, decisions, and action items from conversation history
+
 ## [0.2.5] - 2026-02-08
 
 ### Added
