@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-02-08
+
+### Added
+- Mermaid diagram rendering support for Slack messages
+- Automatic detection and rendering of Mermaid code blocks to images using mermaid.ink API
+- Mermaid diagrams are rendered as image blocks in Block Kit messages
+- Fallback to code block display if image rendering fails
+- Mermaid source code is included below rendered images for editing/copying
+
 ## [0.3.6] - 2026-02-08
 
 ### Fixed

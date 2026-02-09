@@ -5,6 +5,7 @@ Converts markdown to Slack mrkdwn format and formats messages using Block Kit.
 
 import re
 import logging
+import base64
 from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,46 @@ class SlackFormatter:
         return code_blocks
 
     @staticmethod
+    def extract_mermaid_blocks(text: str) -> List[Tuple[str, str]]:
+        """Extract Mermaid diagram blocks from text.
+
+        Args:
+            text: Text containing Mermaid code blocks
+
+        Returns:
+            List of tuples: (full_match, mermaid_code)
+        """
+        mermaid_blocks = []
+        pattern = r"```mermaid\n?([\s\S]*?)```"
+
+        for match in re.finditer(pattern, text):
+            mermaid_code = match.group(1).strip()
+            mermaid_blocks.append((match.group(0), mermaid_code))
+
+        return mermaid_blocks
+
+    @staticmethod
+    def render_mermaid_to_image_url(mermaid_code: str) -> Optional[str]:
+        """Render Mermaid diagram to image URL using mermaid.ink API.
+
+        Args:
+            mermaid_code: Mermaid diagram code
+
+        Returns:
+            Image URL if successful, None otherwise
+        """
+        try:
+            # Encode Mermaid code as base64url (URL-safe base64)
+            encoded = base64.urlsafe_b64encode(mermaid_code.encode()).decode().rstrip("=")
+            # Use mermaid.ink API - supports both SVG and PNG
+            # PNG is better for Slack as it's more universally supported
+            image_url = f"https://mermaid.ink/img/{encoded}"
+            return image_url
+        except Exception as e:
+            logger.warning(f"Failed to render Mermaid diagram: {e}")
+            return None
+
+    @staticmethod
     def should_use_block_kit(text: str) -> bool:
         """Determine if message should use Block Kit formatting.
 
@@ -131,11 +172,16 @@ class SlackFormatter:
         # Use Block Kit if:
         # - Message is longer than threshold
         # - Contains code blocks
+        # - Contains Mermaid diagrams (need image blocks)
         # - Contains multiple sections (headings)
         if len(text) > CHUNK_THRESHOLD:
             return True
 
         if re.search(r"```[\s\S]*?```", text):
+            return True
+
+        # Check for Mermaid diagrams
+        if re.search(r"```mermaid\n?[\s\S]*?```", text):
             return True
 
         if len(re.findall(r"^#{1,3}\s+", text, re.MULTILINE)) > 1:
@@ -444,6 +490,23 @@ class BlockKitFormatter:
         }
 
     @staticmethod
+    def create_image_block(image_url: str, alt_text: str = "Diagram") -> Dict[str, Any]:
+        """Create an image block for Block Kit.
+
+        Args:
+            image_url: URL of the image
+            alt_text: Alt text for accessibility (max 2000 chars)
+
+        Returns:
+            Image block dictionary
+        """
+        return {
+            "type": "image",
+            "image_url": image_url,
+            "alt_text": alt_text[:2000],  # Slack limit
+        }
+
+    @staticmethod
     def format_message(
         text: str, use_block_kit: Optional[bool] = None, include_code_blocks: bool = True
     ) -> Dict[str, Any]:
@@ -477,17 +540,41 @@ class BlockKitFormatter:
         # Block Kit message
         blocks: List[Dict[str, Any]] = []
 
+        # Extract and render Mermaid diagrams first
+        mermaid_blocks = SlackFormatter.extract_mermaid_blocks(text)
+        remaining_text = text
+
+        # Process Mermaid blocks - render to images
+        for full_match, mermaid_code in mermaid_blocks:
+            # Remove Mermaid block from remaining text
+            remaining_text = remaining_text.replace(full_match, "", 1)
+            
+            # Try to render to image
+            image_url = SlackFormatter.render_mermaid_to_image_url(mermaid_code)
+            if image_url:
+                # Add image block
+                blocks.append(BlockKitFormatter.create_image_block(image_url, "Mermaid diagram"))
+                # Also add the code block as fallback/editable source
+                blocks.append(BlockKitFormatter.create_context("_Mermaid source code:_"))
+                code_blocks_list = BlockKitFormatter.create_code_block(mermaid_code, "mermaid")
+                blocks.extend(code_blocks_list)
+            else:
+                # Fallback: render as regular code block if image rendering fails
+                logger.warning("Mermaid rendering failed, falling back to code block")
+                code_blocks_list = BlockKitFormatter.create_code_block(mermaid_code, "mermaid")
+                blocks.extend(code_blocks_list)
+
         # Extract code blocks if requested
         if include_code_blocks:
-            code_blocks = SlackFormatter.extract_code_blocks(text)
-            remaining_text = text
+            code_blocks = SlackFormatter.extract_code_blocks(remaining_text)
+            remaining_text_after_code = remaining_text
 
             # Remove code blocks from remaining text
             for full_match, _, _ in code_blocks:
-                remaining_text = remaining_text.replace(full_match, "", 1)
+                remaining_text_after_code = remaining_text_after_code.replace(full_match, "", 1)
 
             # Process remaining text
-            remaining_formatted = SlackFormatter.markdown_to_mrkdwn(remaining_text.strip())
+            remaining_formatted = SlackFormatter.markdown_to_mrkdwn(remaining_text_after_code.strip())
 
             # Split by headings to create sections
             sections = re.split(r"\n(?=#{1,3}\s+)", remaining_formatted)
@@ -523,8 +610,10 @@ class BlockKitFormatter:
                 blocks.extend(code_blocks_list)
         else:
             # Simple Block Kit: just format the text as sections
+            # Use remaining_text (with Mermaid blocks removed) and convert to mrkdwn
+            remaining_formatted = SlackFormatter.markdown_to_mrkdwn(remaining_text.strip())
             # Split by double newlines (paragraphs)
-            paragraphs = formatted_text.split("\n\n")
+            paragraphs = remaining_formatted.split("\n\n")
 
             for i, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
