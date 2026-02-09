@@ -272,6 +272,11 @@ def create_slack_app(agent: RepoAgent) -> App:
             if bot_user_id and user_id == bot_user_id:
                 return
 
+            # Skip messages that mention the bot - app_mention handler will process those
+            # Check if message contains bot mention to avoid duplicate processing
+            if bot_user_id and f"<@{bot_user_id}>" in text:
+                return
+
             # Check if channel is onboarded
             repo = agent.get_channel_repo(channel_id)
             if not repo:
@@ -302,21 +307,30 @@ def create_slack_app(agent: RepoAgent) -> App:
                 except Exception as e:
                     logger.debug(f"Error checking thread for bot participation: {e}")
 
-            # If this is a thread reply to Benedict, handle it as a conversation
+            # If not a thread reply, check if message seems directed at the bot
+            if not should_respond and not is_thread_reply:
+                if agent.is_message_directed_at_bot(text):
+                    should_respond = True
+                    logger.info(
+                        f"Detected message directed at Benedict in channel {channel_id}: {text[:50]}..."
+                    )
+
+            # If message is directed at Benedict, handle it as a conversation
             if should_respond:
                 try:
-                    # Use thread_ts as the conversation identifier
+                    # Use thread_ts if in thread, otherwise use message_ts for new conversation
+                    conversation_ts = thread_ts or message_ts
                     success, message = agent.handle_conversation(
-                        channel_id, text, thread_ts or message_ts
+                        channel_id, text, conversation_ts
                     )
                     if not success and "⚠️" in message:
-                        format_and_send_message(say, message, thread_ts, message_type="error")
+                        format_and_send_message(say, message, conversation_ts, message_type="error")
                     else:
                         format_and_send_message(
-                            say, message, thread_ts, message_type="conversation"
+                            say, message, conversation_ts, message_type="conversation"
                         )
                 except Exception as e:
-                    logger.error(f"Error handling thread reply: {e}", exc_info=True)
+                    logger.error(f"Error handling message directed at bot: {e}", exc_info=True)
 
             # Trigger background indexing of new messages
             # This runs asynchronously and doesn't block the response

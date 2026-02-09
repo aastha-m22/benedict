@@ -144,8 +144,77 @@ class SlackFormatter:
         return False
 
     @staticmethod
+    def _find_code_block_ranges(text: str) -> List[Tuple[int, int]]:
+        """Find all code block start and end positions.
+
+        Args:
+            text: Text to search
+
+        Returns:
+            List of (start_pos, end_pos) tuples for each code block
+        """
+        ranges = []
+        pattern = r"```[\s\S]*?```"
+        for match in re.finditer(pattern, text):
+            ranges.append((match.start(), match.end()))
+        return ranges
+
+    @staticmethod
+    def _is_inside_code_block(pos: int, code_block_ranges: List[Tuple[int, int]]) -> bool:
+        """Check if a position is inside any code block.
+
+        Args:
+            pos: Position to check
+            code_block_ranges: List of (start, end) tuples for code blocks
+
+        Returns:
+            True if position is inside a code block
+        """
+        for start, end in code_block_ranges:
+            if start <= pos < end:
+                return True
+        return False
+
+    @staticmethod
+    def _truncate_code_aware(text: str, max_length: int) -> str:
+        """Truncate text without breaking code blocks.
+
+        Args:
+            text: Text to truncate
+            max_length: Maximum length
+
+        Returns:
+            Truncated text
+        """
+        if len(text) <= max_length:
+            return text
+
+        # Find all code block boundaries
+        code_block_ranges = SlackFormatter._find_code_block_ranges(text)
+
+        # If truncation point is inside a code block, back up to before that block
+        if SlackFormatter._is_inside_code_block(max_length, code_block_ranges):
+            # Find the code block we're in
+            for start, end in code_block_ranges:
+                if start <= max_length < end:
+                    # Truncate before this code block starts
+                    truncated = text[:start].rstrip()
+                    # Try to truncate at a paragraph boundary
+                    last_para = truncated.rfind("\n\n")
+                    if last_para > max_length * 0.7:  # If reasonable position
+                        return text[:last_para].rstrip()
+                    return truncated
+
+        # Not in code block - truncate at paragraph boundary if possible
+        truncated = text[:max_length]
+        last_para = truncated.rfind("\n\n")
+        if last_para > max_length * 0.7:
+            return text[:last_para].rstrip()
+        return truncated.rstrip()
+
+    @staticmethod
     def split_message(text: str, max_length: int = MAX_MESSAGE_LENGTH - 200) -> List[str]:
-        """Split long message into chunks.
+        """Split long message into chunks, respecting code block boundaries.
 
         Args:
             text: Message text to split
@@ -157,51 +226,62 @@ class SlackFormatter:
         if len(text) <= max_length:
             return [text]
 
+        # Find all code block boundaries
+        code_block_ranges = SlackFormatter._find_code_block_ranges(text)
+
         chunks = []
-        current_chunk = ""
+        start_pos = 0
 
-        # Split by paragraphs first
-        paragraphs = text.split("\n\n")
+        while start_pos < len(text):
+            # Find the best split point for this chunk
+            end_pos = min(start_pos + max_length, len(text))
 
-        for paragraph in paragraphs:
-            # If adding this paragraph would exceed limit, start new chunk
-            if current_chunk and len(current_chunk) + len(paragraph) + 2 > max_length:
-                chunks.append(current_chunk.strip())
-                current_chunk = paragraph
-            else:
-                if current_chunk:
-                    current_chunk += "\n\n" + paragraph
-                else:
-                    current_chunk = paragraph
+            # If we're at the end, take the rest
+            if end_pos >= len(text):
+                chunks.append(text[start_pos:].strip())
+                break
 
-        # Add remaining chunk
-        if current_chunk:
-            chunks.append(current_chunk.strip())
+            # Try to find a safe split point (not inside a code block)
+            # Look backwards from end_pos for paragraph boundaries (\n\n)
+            best_split = end_pos
+            found_safe_split = False
 
-        # If any chunk is still too long, split by lines
-        final_chunks = []
-        for chunk in chunks:
-            if len(chunk) <= max_length:
-                final_chunks.append(chunk)
-            else:
-                # Split by lines, preserving code blocks
-                lines = chunk.split("\n")
-                current_subchunk = ""
+            # Search backwards for paragraph boundary
+            for i in range(end_pos, max(start_pos, end_pos - 500), -1):
+                if i > 0 and i < len(text) - 1 and text[i - 1 : i + 1] == "\n\n":
+                    # Check if this position is safe (not inside code block)
+                    if not SlackFormatter._is_inside_code_block(i, code_block_ranges):
+                        best_split = i
+                        found_safe_split = True
+                        break
 
-                for line in lines:
-                    if current_subchunk and len(current_subchunk) + len(line) + 1 > max_length:
-                        final_chunks.append(current_subchunk.strip())
-                        current_subchunk = line
-                    else:
-                        if current_subchunk:
-                            current_subchunk += "\n" + line
-                        else:
-                            current_subchunk = line
+            # If no paragraph boundary found, try newline boundaries
+            if not found_safe_split:
+                for i in range(end_pos, max(start_pos, end_pos - 200), -1):
+                    if i < len(text) and text[i] == "\n":
+                        # Check if this position is safe
+                        if not SlackFormatter._is_inside_code_block(i, code_block_ranges):
+                            best_split = i + 1  # Include the newline
+                            found_safe_split = True
+                            break
 
-                if current_subchunk:
-                    final_chunks.append(current_subchunk.strip())
+            # If still no safe split found and we're inside a code block,
+            # extend to end of code block (even if exceeds max_length)
+            if not found_safe_split and SlackFormatter._is_inside_code_block(
+                end_pos, code_block_ranges
+            ):
+                # Find which code block we're in and extend to its end
+                for code_start, code_end in code_block_ranges:
+                    if code_start <= end_pos < code_end:
+                        best_split = code_end
+                        break
 
-        return final_chunks
+            chunk = text[start_pos:best_split].strip()
+            if chunk:
+                chunks.append(chunk)
+            start_pos = best_split
+
+        return chunks
 
 
 class BlockKitFormatter:
@@ -387,8 +467,10 @@ class BlockKitFormatter:
         # Simple text message
         if not use_block_kit:
             if len(formatted_text) > MAX_MESSAGE_LENGTH:
-                # Truncate with indicator
-                truncated = formatted_text[:MAX_MESSAGE_LENGTH - 50]
+                # Truncate with code awareness
+                truncated = SlackFormatter._truncate_code_aware(
+                    formatted_text, MAX_MESSAGE_LENGTH - 50
+                )
                 return {"text": f"{truncated}\n\n_...message truncated (too long)_"}
             return {"text": formatted_text}
 

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-02-08
+
+### Fixed
+- Fixed code block truncation and splitting issues in Slack message formatting
+- Code blocks are now never split across message chunks or Slack blocks
+- Truncation now respects code block boundaries - never truncates inside a code block
+- Added code-aware splitting logic that extends to end of code blocks when necessary
+- Fixed issue where code blocks would be cut in half, leaving unclosed code fences
+
+## [0.3.5] - 2026-02-08
+
+### Fixed
+- Fixed bug where bot wouldn't respond immediately to channel messages without @mentions
+- Fixed duplicate responses when @mentioning the bot (message handler now skips messages with bot mentions)
+- Fixed threading issue where responses to channel messages weren't properly linked (now uses `conversation_ts` instead of `thread_ts`)
+
+## [0.3.4] - 2026-02-08
+
+### Changed
+- Repository source paths are now configurable via `BENEDICT_REPO_SOURCE_DIRS` environment variable
+- Format: comma-separated paths, e.g., `BENEDICT_REPO_SOURCE_DIRS=/Users/name/Projects,/opt/repos`
+- Defaults to `~/Projects` if not configured
+- Error messages now show all tried paths including configured source directories
+
+## [0.3.3] - 2026-02-08
+
+### Added
+- Smart message detection - Benedict now responds to messages in channels that appear to be directed at it
+- Detects questions, help requests, and messages mentioning "benedict", "agent", or bot-related terms
+- Responds to channel messages without requiring @mention when message seems directed at the bot
+
 ## [0.3.2] - 2026-02-08
 
 ### Fixed

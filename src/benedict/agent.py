@@ -5,6 +5,7 @@ Core agent logic for handling repository-scoped conversations.
 
 import json
 import logging
+import os
 import re
 from datetime import datetime, date, timezone
 from pathlib import Path
@@ -142,35 +143,61 @@ class RepoAgent:
                 # Try to resolve repository path
                 # Check multiple possible locations: absolute paths, org/repo structure, or just repo name
                 repo_source = None
+                
+                # Get configured repository source directories from environment variable
+                # Format: comma-separated paths, e.g., "/Users/name/Projects,/opt/repos"
+                repo_source_dirs_env = os.environ.get("BENEDICT_REPO_SOURCE_DIRS", "")
+                repo_source_dirs = []
+                
+                if repo_source_dirs_env:
+                    # Parse comma-separated paths
+                    for dir_path in repo_source_dirs_env.split(","):
+                        dir_path = dir_path.strip()
+                        if dir_path:
+                            repo_source_dirs.append(Path(dir_path))
+                else:
+                    # Default fallback paths if not configured
+                    repo_source_dirs = [
+                        Path.home() / "Projects",  # Default: ~/Projects
+                    ]
+
+                # Build list of possible paths to check
                 possible_paths = [
                     Path(repo),  # Try as-is (might be absolute path like /Users/name/Projects/repo)
-                    Path.home()
-                    / "Projects"
-                    / repo,  # Full org/repo path: ~/Projects/mkarots/hookedllm
-                    Path.home()
-                    / "Projects"
-                    / repo.split("/")[-1],  # Just repo name: ~/Projects/hookedllm
-                    Path.cwd() / repo.split("/")[-1],  # Current directory: ./hookedllm
                 ]
+                
+                # Add paths from configured source directories
+                for source_dir in repo_source_dirs:
+                    if source_dir.exists() and source_dir.is_dir():
+                        # Full org/repo path: {source_dir}/mkarots/hookedllm
+                        possible_paths.append(source_dir / repo)
+                        # Just repo name: {source_dir}/hookedllm
+                        possible_paths.append(source_dir / repo.split("/")[-1])
+                
+                # Add current directory as fallback
+                possible_paths.append(Path.cwd() / repo.split("/")[-1])
 
+                # Try each path
+                tried_paths = []
                 for path in possible_paths:
+                    tried_paths.append(str(path))
                     if path.exists() and path.is_dir():
                         repo_source = path
                         logger.info(f"Found repository at: {repo_source}")
                         break
 
                 if not repo_source:
+                    # Build error message with tried paths
+                    tried_paths_str = "\n".join([f"• `{p}`" for p in tried_paths])
                     return (
                         False,
                         f"⚠️ Repository Not Found\n\n"
                         f"Could not find repository `{repo}` locally.\n\n"
                         f"*Tried locations:*\n"
-                        f"• `{Path(repo)}`\n"
-                        f"• `{Path.home() / 'Projects' / repo}`\n"
-                        f"• `{Path.home() / 'Projects' / repo.split('/')[-1]}`\n"
-                        f"• `{Path.cwd() / repo.split('/')[-1]}`\n\n"
+                        f"{tried_paths_str}\n\n"
                         f"*Next steps:*\n"
                         f"• Provide the full path to the repository\n"
+                        f"• Configure `BENEDICT_REPO_SOURCE_DIRS` environment variable\n"
                         f"• Example: `@agent onboard repo /Users/yourname/Projects/hookedllm`",
                     )
 
@@ -797,6 +824,83 @@ class RepoAgent:
         """Check if text is an update index command."""
         text_lower = text.lower()
         return "update" in text_lower and "index" in text_lower or "reindex" in text_lower
+
+    @staticmethod
+    def is_message_directed_at_bot(text: str) -> bool:
+        """Check if a message appears to be directed at the bot.
+
+        Uses heuristics to detect if a message is asking the bot something:
+        - Contains question marks
+        - Mentions "benedict", "agent", or bot-related terms
+        - Starts with common question words
+        - Contains phrases that suggest asking for help
+
+        Args:
+            text: Message text
+
+        Returns:
+            True if message seems directed at the bot
+        """
+        text_lower = text.lower().strip()
+
+        # Skip very short messages (likely not directed at bot)
+        if len(text_lower) < 10:
+            return False
+
+        # Check for explicit mentions
+        if any(
+            term in text_lower
+            for term in ["benedict", "agent", "@benedict", "@agent", "bot", "assistant"]
+        ):
+            return True
+
+        # Check for questions (ends with ? or contains question words)
+        if "?" in text:
+            return True
+
+        # Check for question starters
+        question_starters = [
+            "what",
+            "how",
+            "why",
+            "when",
+            "where",
+            "who",
+            "which",
+            "can you",
+            "could you",
+            "would you",
+            "should i",
+            "should we",
+            "explain",
+            "tell me",
+            "show me",
+            "help me",
+            "i need",
+            "i want",
+            "how do",
+            "how does",
+            "what is",
+            "what are",
+            "where is",
+            "where are",
+        ]
+        if any(text_lower.startswith(starter) for starter in question_starters):
+            return True
+
+        # Check for help-seeking phrases
+        help_phrases = [
+            "help with",
+            "help me",
+            "i don't understand",
+            "i'm confused",
+            "can someone",
+            "does anyone",
+        ]
+        if any(phrase in text_lower for phrase in help_phrases):
+            return True
+
+        return False
 
     @staticmethod
     def extract_repo_name(text: str) -> Optional[str]:
