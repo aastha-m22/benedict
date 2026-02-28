@@ -19,6 +19,62 @@ from benedict.workspace import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
+# Exclusion directories and patterns (shared constant)
+_EXCLUDE_DIRS = {
+    ".venv",
+    "venv",
+    ".virtualenv",
+    "virtualenv",
+    "env",
+    ".env",
+    "__pycache__",
+    ".pytest_cache",
+    "pytest_cache",
+    ".mypy_cache",
+    "node_modules",
+    ".node_modules",
+    "dist",
+    "build",
+    ".build",
+    "site-packages",
+    ".git",
+}
+
+_EXCLUDE_PATTERNS = [".egg-info", ".dist-info"]
+
+
+def _should_exclude_md_file(file_path: str) -> bool:
+    """Check if an .md file path should be excluded.
+    
+    Args:
+        file_path: Relative file path from repo root
+        
+    Returns:
+        True if file should be excluded, False otherwise
+    """
+    path_parts = Path(file_path).parts
+    path_str = str(file_path).lower()
+    
+    # Check if any part matches excluded directories
+    if any(part in _EXCLUDE_DIRS for part in path_parts):
+        return True
+    
+    # Check if path contains excluded directory names anywhere (case-insensitive)
+    # This catches nested venv directories like examples/project/venv/...
+    if any(excluded_dir.lower() in path_str for excluded_dir in _EXCLUDE_DIRS):
+        return True
+    
+    # Check if any part matches exclusion patterns
+    if any(pattern in part for part in path_parts for pattern in _EXCLUDE_PATTERNS):
+        return True
+    
+    # Exclude LICENSE.md files (case-insensitive)
+    file_name = Path(file_path).name.lower()
+    if file_name == "license.md":
+        return True
+    
+    return False
+
 
 class GitFileWatcher:
     """Background watcher for git repositories.
@@ -490,26 +546,48 @@ Keep the response concise and focused on linking changes to roadmap items."""
         """
         repo_key = f"{channel_id}:{repo}"
 
-        # Get list of known .md files
-        known_md_files = set(
-            watcher_state.get("repos", {}).get(repo_key, {}).get("known_md_files", [])
-        )
+        # Get list of known .md files and filter out excluded ones
+        raw_known_md_files = watcher_state.get("repos", {}).get(repo_key, {}).get("known_md_files", [])
+        # Filter out excluded files from known files (cleanup old state)
+        known_md_files = set()
+        for file_path in raw_known_md_files:
+            if not _should_exclude_md_file(file_path):
+                known_md_files.add(file_path)
 
-        # Find all .md files in repository
+        # Find all .md files in repository (excluding virtual environments and build directories)
+        # Use the same exclusion logic as above
         current_md_files: Set[str] = set()
         try:
             for md_file in repo_path.rglob("*.md"):
                 if md_file.is_file():
-                    rel_path = str(md_file.relative_to(repo_path))
-                    current_md_files.add(rel_path)
+                    # Get relative path from repo root
+                    try:
+                        rel_path = md_file.relative_to(repo_path)
+                    except ValueError:
+                        # File is not under repo_path, skip it
+                        continue
+                    
+                    rel_path_str = str(rel_path)
+                    
+                    # Check if file should be excluded
+                    if _should_exclude_md_file(rel_path_str):
+                        logger.debug(f"Excluding .md file: {rel_path_str}")
+                        continue
+                    
+                    current_md_files.add(rel_path_str)
         except Exception as e:
             logger.error(f"Error scanning for .md files in {repo}: {e}")
             return
 
         # Find new .md files
         new_md_files = current_md_files - known_md_files
+        
+        # Safety check: filter out any excluded files that might have slipped through
+        new_md_files = {f for f in new_md_files if not _should_exclude_md_file(f)}
 
-        if new_md_files:
+        # Only notify if there are actually new files (not first run)
+        # On first run, known_md_files will be empty, so we'll silently initialize
+        if new_md_files and known_md_files:
             # Send brief title to channel
             title_message = f"📄 *New documentation files detected in {repo}*"
             thread_ts = self._send_slack_message(channel_id, title_message)
@@ -522,7 +600,7 @@ Keep the response concise and focused on linking changes to roadmap items."""
                 detail_message = "\n".join(detail_parts)
                 self._send_slack_message(channel_id, detail_message, thread_ts=thread_ts)
 
-        # Update known .md files
+        # Update known .md files (always update, even on first run)
         if repo_key not in watcher_state.get("repos", {}):
             watcher_state.setdefault("repos", {})[repo_key] = {}
         watcher_state["repos"][repo_key]["known_md_files"] = list(current_md_files)
