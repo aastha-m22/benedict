@@ -93,9 +93,17 @@ class CodeHandler:
         """Analyze code directory structure."""
         files = []
         subdirectories = []
+        
+        # Special files that should be included even though they start with "."
+        special_files = {".benedict.method.yaml", ".metadata.benedict"}
 
         for item in sorted(directory.iterdir()):
-            if item.name.startswith(".") or item.name == ".metadata.benedict":
+            # Skip hidden files except special ones
+            if item.name.startswith(".") and item.name not in special_files:
+                continue
+            
+            # Skip .metadata.benedict if it's a directory (conflict)
+            if item.name == ".metadata.benedict" and item.is_dir():
                 continue
 
             if item.is_file():
@@ -116,6 +124,16 @@ class CodeHandler:
 
     def summarize_file(self, file_path: Path) -> Dict[str, Any]:
         """Summarize a code file."""
+        # Special handling for method file
+        if file_path.name == ".benedict.method.yaml":
+            return {
+                "name": file_path.name,
+                "content_type": "data",
+                "purpose": "Method file defining project phases, concerns, and methodology rules",
+                "key_functions": [],
+                "key_classes": [],
+            }
+        
         try:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
         except Exception as e:

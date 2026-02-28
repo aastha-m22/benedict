@@ -21,6 +21,7 @@ from benedict.protocols import (
 from benedict.slack_app import create_slack_app
 from benedict.workspace import WorkspaceManager
 from benedict.lib.logging import setup_logging, get_logger
+from benedict.watchers import GitFileWatcher
 from slack_sdk import WebClient
 
 # Configure logging first
@@ -205,12 +206,28 @@ def main():
     # Create and configure Slack app
     slack_app = create_slack_app(agent)
 
+    # Create and start git file watcher
+    watcher_check_interval = int(os.environ.get("BENEDICT_WATCHER_INTERVAL", "300"))  # Default 5 minutes
+    watcher = GitFileWatcher(
+        agent=agent,
+        slack_client=slack_client,
+        check_interval=watcher_check_interval,
+    )
+    watcher.start()
+    logger.info(f"✅ Git file watcher started (check_interval={watcher_check_interval}s)")
+
     # Start the app
     logger.info("Initializing Socket Mode handler...")
     handler = SocketModeHandler(slack_app, app_token)
     logger.info("✅ Bot is running! Press Ctrl+C to stop.")
     logger.info("Waiting for events...")
-    handler.start()
+    
+    try:
+        handler.start()
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        watcher.stop()
+        logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

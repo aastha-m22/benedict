@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-02-08
+
+### Added
+- Git file watcher that monitors all onboarded repositories for new commits and new .md files
+- Background service that periodically checks repositories and sends notifications to Slack channels
+- Watcher state persistence to track last checked commit time per repository
+- Configurable check interval via `BENEDICT_WATCHER_INTERVAL` environment variable (default: 300 seconds)
+- Automatic detection of new commits with file change details (added, modified, deleted files)
+- Automatic detection of new documentation files (.md files) in repositories
+- Graceful shutdown handling for the watcher service
+- Git file watcher now saves git patches to files in `.benedict/patches/` directory
+- LLM-based change analysis that understands what changed in commits
+- Automatic roadmap linking: changes are analyzed and linked to roadmap items
+- Semantic search integration to find related roadmap items based on changed files
+- Comprehensive change summaries that connect code changes to project roadmap
+- Roadmap file detection (ROADMAP.md, roadmap.md, docs/ROADMAP.md)
+- Change analysis includes: summary of changes, roadmap relationships, and affected roadmap items
+
+## [0.3.12] - 2026-02-08
+
+### Added
+- Automatic creation of default `.benedict.method.yaml` file when onboarding empty directories
+- Method file is automatically created during onboarding if directory is empty or method file doesn't exist
+- Helper method `_create_default_method_data()` to generate default method file structure
+- Helper method `_is_directory_empty()` to detect empty directories (ignoring system files like .git, .venv, etc.)
+
+### Fixed
+- Fixed method file creation failing when repository directory doesn't exist
+- `MethodWriter.write_method()` now creates parent directories before writing the method file
+- Prevents `FileNotFoundError` when creating method files in new repository paths
+- Improved error handling: method file write failures now raise exceptions instead of silently returning
+- Added file creation verification to ensure method files are actually written
+- Enhanced logging: success messages now use INFO level instead of DEBUG for better visibility
+
+## [0.3.11] - 2026-02-08
+
+### Added
+- Comprehensive features overview document (`docs/FEATURES_OVERVIEW.md`) documenting all implemented features
+- Complete feature inventory covering commands, LLM integration, semantic search, method files, metadata, and more
+- Usage examples and integration points documentation
+
+## [0.3.10] - 2026-02-08
+
+### Added
+- Code reading guide (`docs/CODE_READING_GUIDE.md`) explaining how to read and understand the codebase
+- Comprehensive documentation covering architecture patterns, reading strategies, and debugging tips
+- Guiding questions for engineers to navigate the codebase effectively
+
+## [0.3.9] - 2026-02-08
+
+### Fixed
+- Prevented metadata reader from scanning `.metadata.benedict` files in virtual environments and excluded directories
+- Added path filtering to exclude common build/cache directories (`.venv`, `venv`, `node_modules`, `site-packages`, etc.) from metadata scanning
+- Reduced unnecessary debug log noise from reading metadata files in third-party package directories
+
+## [0.3.8] - 2026-02-08
+
+### Added
+- Method file support for reading and updating `.benedict.method.yaml` files
+- `MethodReader` class to read and parse method files with project phases, concerns, and rules
+- `MethodWriter` class to write and update method files
+- Environment variable `BENEDICT_METHOD_FILE` to specify custom method file path
+- Automatic detection of missing method files with proactive guidance
+- Method file creation handler that generates complete method files with all concern definitions and sequence phases
+- Integration of method file information into context building for better project awareness
+- System prompt prioritization: method file creation is marked as FIRST PRIORITY when missing
+- Method file update detection and confirmation flow for phase, iteration, step, and concern updates
+- Support for parsing method file update requests (e.g., "set phase to sprint", "set documentation to complete")
+
+### Changed
+- Method file information is now included in repository context when available
+- System prompt now instructs LLM to prioritize method file creation when missing (marked as CRITICAL)
+
 ## [0.3.7] - 2026-02-08
 
 ### Added

@@ -4,8 +4,9 @@ Pure functions for building context from repository files using semantic search.
 """
 
 import logging
+import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from benedict.protocols import RepoReader, SemanticIndexer
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ def build_context(
     workspace_path: Optional[Path] = None,
     metadata_reader=None,
     action_logger=None,
+    method_reader=None,
 ) -> str:
     """Build relevant context for question using semantic search.
 
@@ -32,6 +34,7 @@ def build_context(
         workspace_path: Optional workspace path for metadata and action log
         metadata_reader: Optional metadata reader for including metadata in context
         action_logger: Optional action logger for including recent actions
+        method_reader: Optional method reader for including method file information
 
     Returns:
         Formatted context string
@@ -69,6 +72,55 @@ def build_context(
         except Exception as e:
             logger.warning(f"Error reading metadata: {e}")
 
+    # Include method file summary if available - THIS IS THE SECOND MOST VALUABLE FILE (after state.json)
+    if method_reader and workspace_path:
+        try:
+            repo_method_path = workspace_path / repo
+            method_summary = method_reader.get_method_summary(repo_method_path)
+            if method_summary:
+                method_data = method_reader.read_method(repo_method_path)
+                if method_data:
+                    method = method_data.get("method", {})
+                    pc = method.get("pc", {})
+                    concerns = method.get("concerns", {})
+                    
+                    method_context = f"# ⭐ Project Method File (SECOND MOST VALUABLE FILE): {repo}\n"
+                    method_context += f"**This file contains the project's current phase, concerns, and methodology rules.**\n\n"
+                    method_context += f"Current State: {method_summary}\n\n"
+                    
+                    # Include current phase details
+                    if pc:
+                        method_context += "## Program Counter\n"
+                        method_context += f"- Phase: {pc.get('phase', 'N/A')}\n"
+                        method_context += f"- Iteration: {pc.get('iteration', 'N/A')}\n"
+                        method_context += f"- Step: {pc.get('step', 'N/A')}\n\n"
+                    
+                    # Include current concerns
+                    if concerns:
+                        method_context += "## Current Concerns\n"
+                        for concern, state in concerns.items():
+                            method_context += f"- {concern}: {state}\n"
+                        method_context += "\n"
+                    
+                    # Prepend method context to ensure it's seen first
+                    parts.insert(0, method_context)
+        except Exception as e:
+            logger.warning(f"Error reading method file: {e}")
+
+    # Check if user is asking for a specific file - read it directly
+    requested_file = _extract_file_request(question)
+    if requested_file:
+        try:
+            # Try to read the requested file directly
+            content = repo_reader.read_file(repo, requested_file)
+            parts.append(f"# {requested_file}\n{content}")
+            logger.info(f"Added directly requested file {requested_file} to context")
+            # Still include other context, but prioritize the direct file read
+        except FileNotFoundError:
+            logger.debug(f"Requested file {requested_file} not found")
+        except Exception as e:
+            logger.warning(f"Error reading requested file {requested_file}: {e}")
+
     # Always include README if it exists
     try:
         readme = repo_reader.read_file(repo, "README.md")
@@ -105,6 +157,10 @@ def build_context(
 
             # Group results by file and get full file content
             seen_files = set()
+            # If a specific file was requested directly, don't add it again from semantic search
+            if requested_file:
+                seen_files.add(requested_file)
+            
             for result in results:
                 file_path = result["file_path"]
                 if file_path in seen_files:
@@ -215,6 +271,58 @@ def truncate_file_content(content: str, max_lines: int = 1000) -> str:
     return truncated + f"\n\n[... file truncated after {max_lines} lines ...]"
 
 
+def _extract_file_request(question: str) -> Optional[str]:
+    """Extract specific file path from question if user is asking for a file.
+    
+    Detects patterns like:
+    - "tell me the contents of .benedict.method.yaml"
+    - "show me .benedict.method.yaml"
+    - "read .benedict.method.yaml"
+    - "what's in .benedict.method.yaml"
+    - "contents of .benedict.method.yaml"
+    
+    Args:
+        question: User question
+        
+    Returns:
+        File path if detected, None otherwise
+    """
+    question_lower = question.lower()
+    
+    # Patterns that indicate a file request
+    file_request_patterns = [
+        r"contents?\s+of\s+([^\s]+)",
+        r"show\s+me\s+([^\s]+)",
+        r"read\s+([^\s]+)",
+        r"tell\s+me\s+(?:the\s+)?contents?\s+of\s+([^\s]+)",
+        r"what'?s?\s+in\s+([^\s]+)",
+        r"what\s+does\s+([^\s]+)\s+contain",
+        r"display\s+([^\s]+)",
+        r"open\s+([^\s]+)",
+    ]
+    
+    for pattern in file_request_patterns:
+        match = re.search(pattern, question_lower)
+        if match:
+            file_path = match.group(1).strip()
+            # Remove trailing punctuation
+            file_path = file_path.rstrip('.,!?;:')
+            # Only return if it looks like a file path (contains . or starts with .)
+            if '.' in file_path or file_path.startswith('.'):
+                return file_path
+    
+    # Also check for explicit file mentions in quotes or backticks
+    quoted_file = re.search(r'["\']([^"\']+\.[^"\']+)["\']', question)
+    if quoted_file:
+        return quoted_file.group(1)
+    
+    backtick_file = re.search(r'`([^`]+\.[^`]+)`', question)
+    if backtick_file:
+        return backtick_file.group(1)
+    
+    return None
+
+
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
     """Truncate text to fit token limit.
 
@@ -240,3 +348,86 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
         truncated = truncated[:last_newline]
 
     return truncated + "\n\n[... context truncated to fit token limit ...]"
+
+
+def build_architect_context(
+    agent: Any,
+    query: str,
+    state: Dict[str, Any]
+) -> str:
+    """Build context for architect queries across all projects.
+    
+    Args:
+        agent: RepoAgent instance with semantic_indexer
+        query: User query/question
+        state: State dictionary with channels mapping
+        
+    Returns:
+        Formatted context string with project list and combined search results
+    """
+    parts = []
+    
+    # 1. Get all channel→repo mappings
+    channels = state.get("channels", {})
+    
+    # 2. Build project list
+    projects = []
+    for channel_id, config in channels.items():
+        repo = config.get("repo")
+        if repo:
+            projects.append({
+                "channel_id": channel_id,
+                "repo": repo,
+                "onboarded_at": config.get("onboarded_at")
+            })
+    
+    # 3. Add project list to context
+    if projects:
+        projects_context = f"# Projects Managed by Benedict ({len(projects)} total)\n\n"
+        for project in projects:
+            projects_context += f"- **{project['repo']}** (channel: {project['channel_id']})\n"
+        parts.append(projects_context)
+    else:
+        parts.append("# Projects Managed by Benedict\n\nNo projects currently onboarded.")
+    
+    # 4. Search across all projects' RAG
+    all_results = []
+    if agent.semantic_indexer and projects:
+        for project in projects:
+            repo = project["repo"]
+            try:
+                # Ensure repository is indexed
+                if not agent.semantic_indexer.is_indexed(repo):
+                    logger.debug(f"Repository {repo} not indexed, skipping for architect query")
+                    continue
+                
+                # Perform semantic search
+                results = agent.semantic_indexer.search(repo, query, top_k=5)
+                for result in results:
+                    result["project"] = repo
+                    all_results.append(result)
+            except Exception as e:
+                logger.warning(f"Error searching repository {repo} for architect query: {e}")
+                continue
+    
+    # 5. Combine search results into context
+    if all_results:
+        # Sort by score (descending) and take top 10
+        all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        top_results = all_results[:10]
+        
+        results_context = f"\n# Relevant Code Across Projects ({len(all_results)} total results, showing top {len(top_results)})\n\n"
+        for result in top_results:
+            project = result.get("project", "unknown")
+            file_path = result.get("file_path", "unknown")
+            content = result.get("content", "")
+            score = result.get("score", 0)
+            
+            results_context += f"## [{project}] {file_path} (score: {score:.2f})\n"
+            results_context += f"```\n{content[:500]}{'...' if len(content) > 500 else ''}\n```\n\n"
+        
+        parts.append(results_context)
+    else:
+        parts.append("\n# Relevant Code Across Projects\n\nNo relevant code found across projects.")
+    
+    return "\n".join(parts)
