@@ -1,0 +1,46 @@
+content_type: code
+summary: Code directory with 4 files and 1 subdirectories
+purpose: 'Source code directory: method'
+files:
+- name: .metadata.benedict
+  content_type: code
+  purpose: Code file
+  key_functions: []
+  key_classes: []
+- name: __init__.py
+  content_type: code
+  purpose: Method file system module.
+  key_functions: []
+  key_classes: []
+- name: method_reader.py
+  content_type: code
+  purpose: Method Reader
+  key_functions:
+  - __init__
+  - read_method
+  - method_exists
+  - get_current_phase
+  - get_current_concerns
+  - get_concern_rules
+  - get_concern_definition
+  - get_sequence_phase
+  - find_method_files
+  - get_method_summary
+  key_classes:
+  - MethodReader
+- name: method_writer.py
+  content_type: code
+  purpose: Method Writer
+  key_functions:
+  - write_method
+  - update_pc
+  - update_concern
+  - update_sequence_phase_status
+  - update_method_data
+  - _deep_merge
+  key_classes:
+  - MethodWriter
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code
