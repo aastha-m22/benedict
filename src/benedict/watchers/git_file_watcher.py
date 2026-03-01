@@ -55,22 +55,30 @@ def _should_exclude_md_file(file_path: str) -> bool:
     path_parts = Path(file_path).parts
     path_str = str(file_path).lower()
     
-    # Check if any part matches excluded directories
-    if any(part in _EXCLUDE_DIRS for part in path_parts):
-        return True
+    # Check if any part matches excluded directories (exact match)
+    for part in path_parts:
+        if part in _EXCLUDE_DIRS:
+            logger.debug(f"Excluding {file_path}: part '{part}' matches excluded directory")
+            return True
     
     # Check if path contains excluded directory names anywhere (case-insensitive)
     # This catches nested venv directories like examples/project/venv/...
-    if any(excluded_dir.lower() in path_str for excluded_dir in _EXCLUDE_DIRS):
-        return True
+    for excluded_dir in _EXCLUDE_DIRS:
+        if excluded_dir.lower() in path_str:
+            logger.debug(f"Excluding {file_path}: contains '{excluded_dir}' in path")
+            return True
     
     # Check if any part matches exclusion patterns
-    if any(pattern in part for part in path_parts for pattern in _EXCLUDE_PATTERNS):
-        return True
+    for part in path_parts:
+        for pattern in _EXCLUDE_PATTERNS:
+            if pattern in part:
+                logger.debug(f"Excluding {file_path}: part '{part}' matches pattern '{pattern}'")
+                return True
     
     # Exclude LICENSE.md files (case-insensitive)
     file_name = Path(file_path).name.lower()
     if file_name == "license.md":
+        logger.debug(f"Excluding {file_path}: LICENSE.md file")
         return True
     
     return False
@@ -217,31 +225,35 @@ class GitFileWatcher:
             logger.debug(f"Repository {repo} is not a git repository, skipping")
             return
 
-        # Get last checked time for this repo
+        # Get last checked commit hash for this repo
         repo_key = f"{channel_id}:{repo}"
-        last_checked_time = watcher_state.get("repos", {}).get(repo_key, {}).get("last_commit_time")
+        last_commit_hash = watcher_state.get("repos", {}).get(repo_key, {}).get("last_commit_hash")
 
-        # Get last commit time from git
-        last_commit_time = self.change_detector.get_last_commit_time(repo_path)
+        # Get current HEAD commit hash
+        current_commit_hash = self._get_current_commit_hash(repo_path)
 
-        if not last_commit_time:
+        if not current_commit_hash:
             logger.debug(f"No commits found for repo {repo}")
             return
 
-        # Check for new commits
-        if last_checked_time:
-            last_checked_dt = datetime.fromisoformat(last_checked_time.replace("Z", "+00:00"))
-            if last_commit_time > last_checked_dt:
-                # New commit detected
-                self._handle_new_commit(channel_id, repo, repo_path, last_checked_dt, watcher_state)
+        # Check for new commits by comparing commit hashes
+        if last_commit_hash:
+            if current_commit_hash != last_commit_hash:
+                # New commit detected - use commit hashes for diff
+                logger.info(f"New commit detected in {repo}: {last_commit_hash[:8]} -> {current_commit_hash[:8]}")
+                self._handle_new_commit(channel_id, repo, repo_path, last_commit_hash, current_commit_hash, watcher_state)
         else:
             # First time checking - initialize but don't notify
-            logger.info(f"Initializing watcher for repo {repo} (first check)")
+            logger.info(f"Initializing watcher for repo {repo} (first check, commit: {current_commit_hash[:8]})")
 
-        # Update last checked time
+        # Update last checked commit hash
         if repo_key not in watcher_state.get("repos", {}):
             watcher_state.setdefault("repos", {})[repo_key] = {}
-        watcher_state["repos"][repo_key]["last_commit_time"] = last_commit_time.isoformat()
+        watcher_state["repos"][repo_key]["last_commit_hash"] = current_commit_hash
+        # Also store commit time for reference
+        current_commit_time = self._get_commit_time(repo_path, current_commit_hash)
+        if current_commit_time:
+            watcher_state["repos"][repo_key]["last_commit_time"] = current_commit_time.isoformat()
 
         # Check for new .md files
         self._check_new_md_files(channel_id, repo, repo_path, watcher_state)
@@ -251,7 +263,8 @@ class GitFileWatcher:
         channel_id: str,
         repo: str,
         repo_path: Path,
-        since: datetime,
+        from_commit_hash: str,
+        to_commit_hash: str,
         watcher_state: Dict[str, Any],
     ) -> None:
         """Handle detection of a new commit.
@@ -260,15 +273,22 @@ class GitFileWatcher:
             channel_id: Slack channel ID
             repo: Repository identifier
             repo_path: Path to repository
-            since: Datetime to check changes since
+            from_commit_hash: Previous commit hash
+            to_commit_hash: Current commit hash
             watcher_state: Watcher state dictionary
         """
-        changes = self.change_detector.detect_changes(repo_path, since=since)
-
-        added_files = changes.get("added", [])
-        modified_files = changes.get("modified", [])
-        deleted_files = changes.get("deleted", [])
-        diff_output = changes.get("diff")
+        # Get name-status diff to parse changed files
+        name_status_diff = self._get_diff_between_commits(repo_path, from_commit_hash, to_commit_hash)
+        
+        # Parse diff to get changed files
+        changed_files = self._parse_diff_files(name_status_diff)
+        
+        added_files = changed_files.get("added", [])
+        modified_files = changed_files.get("modified", [])
+        deleted_files = changed_files.get("deleted", [])
+        
+        # Get full diff (with content) for patch file
+        diff_output = self._get_full_diff_between_commits(repo_path, from_commit_hash, to_commit_hash)
 
         if not (added_files or modified_files or deleted_files):
             return
@@ -533,6 +553,156 @@ Keep the response concise and focused on linking changes to roadmap items."""
 
         return None
 
+    def _get_current_commit_hash(self, repo_path: Path) -> Optional[str]:
+        """Get current HEAD commit hash.
+
+        Args:
+            repo_path: Path to repository
+
+        Returns:
+            Commit hash string or None if not available
+        """
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            commit_hash = result.stdout.strip()
+            return commit_hash if commit_hash else None
+        except subprocess.CalledProcessError:
+            return None
+        except Exception as e:
+            logger.debug(f"Error getting commit hash: {e}")
+            return None
+
+    def _get_commit_time(self, repo_path: Path, commit_hash: str) -> Optional[datetime]:
+        """Get commit timestamp for a specific commit hash.
+
+        Args:
+            repo_path: Path to repository
+            commit_hash: Commit hash
+
+        Returns:
+            Commit datetime or None if not available
+        """
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "log", "-1", "--format=%ct", commit_hash],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            if result.stdout.strip():
+                timestamp = int(result.stdout.strip())
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        except (subprocess.CalledProcessError, ValueError):
+            pass
+        return None
+
+    def _get_diff_between_commits(self, repo_path: Path, from_hash: str, to_hash: str) -> str:
+        """Get git diff --name-status between two commit hashes.
+
+        Args:
+            repo_path: Path to repository
+            from_hash: Previous commit hash
+            to_hash: Current commit hash
+
+        Returns:
+            Git diff --name-status output as string
+        """
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-status", from_hash, to_hash],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Error getting diff between commits: {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Unexpected error getting diff: {e}", exc_info=True)
+            return ""
+
+    def _get_full_diff_between_commits(self, repo_path: Path, from_hash: str, to_hash: str) -> str:
+        """Get full git diff (with content) between two commit hashes.
+
+        Args:
+            repo_path: Path to repository
+            from_hash: Previous commit hash
+            to_hash: Current commit hash
+
+        Returns:
+            Full git diff output as string
+        """
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "diff", from_hash, to_hash],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Error getting full diff between commits: {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Unexpected error getting full diff: {e}", exc_info=True)
+            return ""
+
+    def _parse_diff_files(self, diff_output: str) -> Dict[str, List[str]]:
+        """Parse git diff --name-status output to extract changed files.
+
+        Git diff --name-status format:
+        A <file>  - Added
+        M <file>  - Modified
+        D <file>  - Deleted
+
+        Args:
+            diff_output: Git diff --name-status output
+
+        Returns:
+            Dictionary with 'added', 'modified', 'deleted' lists
+        """
+        added = []
+        modified = []
+        deleted = []
+
+        for line in diff_output.strip().split("\n"):
+            if not line.strip():
+                continue
+
+            parts = line.split("\t", 1)
+            if len(parts) != 2:
+                continue
+
+            status = parts[0].strip()
+            file_path = parts[1].strip()
+
+            if status.startswith("A"):
+                added.append(file_path)
+            elif status.startswith("M"):
+                modified.append(file_path)
+            elif status.startswith("D"):
+                deleted.append(file_path)
+
+        return {"added": added, "modified": modified, "deleted": deleted}
+
     def _check_new_md_files(
         self, channel_id: str, repo: str, repo_path: Path, watcher_state: Dict[str, Any]
     ) -> None:
@@ -548,11 +718,20 @@ Keep the response concise and focused on linking changes to roadmap items."""
 
         # Get list of known .md files and filter out excluded ones
         raw_known_md_files = watcher_state.get("repos", {}).get(repo_key, {}).get("known_md_files", [])
+        logger.debug(f"Raw known .md files for {repo}: {len(raw_known_md_files)}")
+        
         # Filter out excluded files from known files (cleanup old state)
         known_md_files = set()
+        excluded_from_known = 0
         for file_path in raw_known_md_files:
-            if not _should_exclude_md_file(file_path):
+            if _should_exclude_md_file(file_path):
+                excluded_from_known += 1
+                logger.debug(f"Excluding known file: {file_path}")
+            else:
                 known_md_files.add(file_path)
+        
+        if excluded_from_known > 0:
+            logger.info(f"Filtered out {excluded_from_known} excluded files from known files for {repo}")
 
         # Find all .md files in repository (excluding virtual environments and build directories)
         # Use the same exclusion logic as above
@@ -581,9 +760,22 @@ Keep the response concise and focused on linking changes to roadmap items."""
 
         # Find new .md files
         new_md_files = current_md_files - known_md_files
+        logger.debug(f"New .md files before exclusion check: {len(new_md_files)}")
         
         # Safety check: filter out any excluded files that might have slipped through
-        new_md_files = {f for f in new_md_files if not _should_exclude_md_file(f)}
+        excluded_from_new = 0
+        filtered_new_md_files = set()
+        for f in new_md_files:
+            if _should_exclude_md_file(f):
+                excluded_from_new += 1
+                logger.warning(f"Excluded file slipped through to new_md_files: {f}")
+            else:
+                filtered_new_md_files.add(f)
+        
+        new_md_files = filtered_new_md_files
+        
+        if excluded_from_new > 0:
+            logger.warning(f"Filtered out {excluded_from_new} excluded files from new_md_files for {repo}")
 
         # Only notify if there are actually new files (not first run)
         # On first run, known_md_files will be empty, so we'll silently initialize
@@ -601,9 +793,15 @@ Keep the response concise and focused on linking changes to roadmap items."""
                 self._send_slack_message(channel_id, detail_message, thread_ts=thread_ts)
 
         # Update known .md files (always update, even on first run)
+        # Filter out excluded files before saving (cleanup)
+        filtered_current_md_files = [f for f in current_md_files if not _should_exclude_md_file(f)]
+        
         if repo_key not in watcher_state.get("repos", {}):
             watcher_state.setdefault("repos", {})[repo_key] = {}
-        watcher_state["repos"][repo_key]["known_md_files"] = list(current_md_files)
+        watcher_state["repos"][repo_key]["known_md_files"] = filtered_current_md_files
+        
+        if len(filtered_current_md_files) != len(current_md_files):
+            logger.info(f"Cleaned up watcher state: removed {len(current_md_files) - len(filtered_current_md_files)} excluded files from state for {repo}")
 
     def _send_slack_message(
         self, channel_id: str, message: str, thread_ts: Optional[str] = None
