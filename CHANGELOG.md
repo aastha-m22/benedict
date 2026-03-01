@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-02-09
+
+### Fixed
+- **Critical Bug Fixes in Slack Formatter:**
+  - Fixed placeholder collision vulnerability (Bug #1): Replaced simple numeric placeholders with UUID-based placeholders to prevent collisions with actual code content
+  - Fixed infinite loop in `split_message()` (Bug #5): Added progress check and maximum iteration limit to prevent hangs
+  - Fixed unsafe string replacement (Bug #3): Replaced `str.replace()` with position-based removal to avoid substring collisions
+  - Fixed unclosed code blocks in truncation (Bug #6): Added code block balance verification before truncating
+  - Fixed heading detection in code blocks (Bug #4): Headings inside code blocks are now correctly excluded from section splitting
+  - Fixed language identifier regex (Bug #2): Now supports language identifiers with hyphens, dots, plus signs, and hash (e.g., `python-3`, `c++`, `c#`, `tsx.js`)
+  - Fixed Mermaid/code block overlap (Bug #7): Mermaid blocks are now excluded from code block extraction using negative lookahead
+  - Fixed field truncation issue (Bug #8): Field chunks are now used directly instead of being truncated again
+- **Edge Case Improvements:**
+  - Added handling for very long single-line code blocks: splits at whitespace/punctuation boundaries
+  - Added URL length validation for Mermaid rendering: prevents extremely long URLs (>2000 chars)
+- **Code Quality:**
+  - Extracted magic numbers to named constants: `PARAGRAPH_SEARCH_WINDOW`, `NEWLINE_SEARCH_WINDOW`, `TRUNCATION_THRESHOLD_RATIO`, `CODE_BLOCK_BUFFER`, `MAX_ITERATIONS_SPLIT`
+  - Improved error handling and logging throughout the formatter
+
 ## [0.3.13] - 2026-02-08
 
 ### Added

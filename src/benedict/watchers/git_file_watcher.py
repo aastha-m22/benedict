@@ -6,6 +6,7 @@ sending notifications to Slack channels.
 
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -734,21 +735,83 @@ Keep the response concise and focused on linking changes to roadmap items."""
             logger.info(f"Filtered out {excluded_from_known} excluded files from known files for {repo}")
 
         # Find all .md files in repository (excluding virtual environments and build directories)
-        # Use the same exclusion logic as above
+        # Use a custom walker that skips excluded directories during traversal
         current_md_files: Set[str] = set()
         try:
-            for md_file in repo_path.rglob("*.md"):
-                if md_file.is_file():
+            def _should_skip_directory(dir_path: Path) -> bool:
+                """Check if a directory should be skipped during traversal.
+                
+                Args:
+                    dir_path: Path to directory (absolute path from os.walk)
+                    
+                Returns:
+                    True if directory should be skipped, False otherwise
+                """
+                # Get relative path from repo root
+                try:
+                    rel_path = dir_path.relative_to(repo_path)
+                except ValueError:
+                    # If not under repo_path, check the directory name itself
+                    dir_name = dir_path.name
+                    return dir_name in _EXCLUDE_DIRS or any(pattern in dir_name for pattern in _EXCLUDE_PATTERNS)
+                
+                # Check if directory name matches excluded directories
+                dir_name = dir_path.name
+                if dir_name in _EXCLUDE_DIRS:
+                    return True
+                
+                # Check if any part of the relative path matches excluded directories
+                path_parts = rel_path.parts
+                for part in path_parts:
+                    if part in _EXCLUDE_DIRS:
+                        return True
+                
+                # Check if path contains excluded directory names (case-insensitive)
+                rel_path_str_lower = str(rel_path).lower()
+                for excluded_dir in _EXCLUDE_DIRS:
+                    if excluded_dir.lower() in rel_path_str_lower:
+                        return True
+                
+                # Check if directory name matches exclusion patterns
+                for pattern in _EXCLUDE_PATTERNS:
+                    if pattern in dir_name:
+                        return True
+                
+                return False
+            
+            # Walk directory tree, skipping excluded directories
+            for root, dirs, files in os.walk(repo_path):
+                root_path = Path(root)
+                
+                # Filter out excluded directories from dirs list (modifies in place)
+                # This prevents os.walk from descending into excluded directories
+                original_dirs = dirs[:]
+                dirs[:] = [d for d in dirs if not _should_skip_directory(root_path / d)]
+                
+                # Log if we're skipping any directories
+                skipped_dirs = set(original_dirs) - set(dirs)
+                if skipped_dirs:
+                    logger.debug(f"Skipping excluded directories in {root_path}: {skipped_dirs}")
+                
+                # Check files in current directory
+                for file_name in files:
+                    if not file_name.endswith('.md'):
+                        continue
+                    
+                    file_path = root_path / file_name
+                    if not file_path.is_file():
+                        continue
+                    
                     # Get relative path from repo root
                     try:
-                        rel_path = md_file.relative_to(repo_path)
+                        rel_path = file_path.relative_to(repo_path)
                     except ValueError:
                         # File is not under repo_path, skip it
                         continue
                     
                     rel_path_str = str(rel_path)
                     
-                    # Check if file should be excluded
+                    # Final safety check: use the exclusion function to catch any files that slipped through
                     if _should_exclude_md_file(rel_path_str):
                         logger.debug(f"Excluding .md file: {rel_path_str}")
                         continue

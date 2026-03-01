@@ -232,6 +232,10 @@ def create_slack_app(agent: RepoAgent) -> App:
                 success, message = agent.handle_onboard(channel_id, user_id, text_clean)
                 format_and_send_message(say, message, thread_ts, message_type="command")
 
+            elif agent.is_offboard_command(text_clean):
+                success, message = agent.handle_offboard(channel_id, user_id)
+                format_and_send_message(say, message, thread_ts, message_type="command")
+
             elif agent.is_status_command(text_clean):
                 success, message, channel_config = agent.handle_status(channel_id)
 

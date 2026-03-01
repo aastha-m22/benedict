@@ -135,6 +135,17 @@ class RepoAgent:
         self.save_state(state)
         logger.info(f"Onboarded channel {channel_id} to repo {repo}")
 
+    def remove_channel_repo(self, channel_id: str) -> None:
+        """Remove repository association from channel (offboard)."""
+        state = self.load_state()
+        if "channels" in state and channel_id in state["channels"]:
+            repo = state["channels"][channel_id].get("repo", "unknown")
+            del state["channels"][channel_id]
+            self.save_state(state)
+            logger.info(f"Offboarded channel {channel_id} from repo {repo}")
+        else:
+            logger.warning(f"Channel {channel_id} was not onboarded")
+
     def get_architect_channel(self) -> Optional[str]:
         """Get architect channel ID."""
         state = self.load_state()
@@ -341,6 +352,47 @@ class RepoAgent:
             f"✅ Onboarded! This channel is now linked to `{repo}`.\n"
             f"I'll remember this repo for all our conversations here.\n"
         )
+        
+        return True, message
+
+    def handle_offboard(self, channel_id: str, user_id: str) -> Tuple[bool, str]:
+        """Handle offboard command to remove channel from repository.
+        
+        Args:
+            channel_id: Slack channel ID
+            user_id: User ID who requested offboarding
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        state = self.load_state()
+        channels = state.get("channels", {})
+        
+        if channel_id not in channels:
+            return (
+                False,
+                "⚠️ Channel Not Onboarded\n\n"
+                "This channel is not currently onboarded to any repository.\n\n"
+                "*To onboard:*\n"
+                "• Use `@agent onboard repo your-org/your-repo`",
+            )
+        
+        # Get repo info before removing
+        channel_config = channels[channel_id]
+        repo = channel_config.get("repo", "unknown")
+        
+        # Remove channel from state
+        self.remove_channel_repo(channel_id)
+        
+        # Build success message
+        message = (
+            f"✅ Offboarded! This channel is no longer linked to `{repo}`.\n"
+            f"I'll stop monitoring this repository for this channel.\n\n"
+            f"*Note:* Workspace data and conversation history are preserved.\n"
+            f"To re-onboard, use `@agent onboard repo {repo}`"
+        )
+        
+        return True, message
         
         if self.conversation_history_indexer:
             message += (
@@ -1650,6 +1702,18 @@ class RepoAgent:
         """Check if text is an onboard command."""
         text_lower = text.lower()
         return "onboard" in text_lower or "this channel is for" in text_lower
+
+    @staticmethod
+    def is_offboard_command(text: str) -> bool:
+        """Check if text is an offboard command."""
+        text_lower = text.lower().strip()
+        return (
+            "offboard" in text_lower or
+            "unonboard" in text_lower or
+            "remove channel" in text_lower or
+            "disconnect" in text_lower or
+            "unlink" in text_lower
+        )
 
     @staticmethod
     def is_architect_onboard_command(text: str) -> bool:
