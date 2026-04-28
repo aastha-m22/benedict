@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-04-28
+
+### Removed
+- **`FileWatcherDetector`**: Removed unused mtime-based change detector. It was wired into the `create_repo_change_detector` factory under `detector_type="file_watcher"` but never instantiated at runtime — the `"auto"` branch always returned `GitChangeDetector`. Deleted `src/benedict/repo_change_detector/file_watcher_detector.py`, removed exports from `repo_change_detector/__init__.py`, simplified the factory to only support `"git"`, and updated `main.py` to pass `detector_type="git"` explicitly.
+
+### Changed
+- Updated `docs/FILE_AND_GIT_WATCHING.md` and `plans/ARCHITECTURE.md` to reflect that `GitChangeDetector` is now the only `RepoChangeDetector` implementation.
+
+## [0.3.16] - 2026-03-13
+
+### Added
+- **Documentation**: Added `docs/FILE_AND_GIT_WATCHING.md` describing how file watching, git watching, and change detection work in Benedict.
+
+## [0.3.15] - 2026-02-09
+
+### Changed
+- **Disabled documentation file detection**: The automatic detection and notification of new .md files has been disabled as it was making Slack channels too noisy. Commit detection and notifications remain active.
+
 ## [0.3.14] - 2026-02-09
 
 ### Fixed

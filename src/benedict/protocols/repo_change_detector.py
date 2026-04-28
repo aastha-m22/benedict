@@ -1,7 +1,6 @@
 """Repository Change Detector Protocol
 
 Abstract interface for detecting changes in repositories.
-Supports git-based detection and file-watching.
 """
 
 from typing import Protocol, List, Dict, Optional
@@ -55,11 +54,11 @@ class RepoChangeDetector(Protocol):
         ...
 
 
-def create_repo_change_detector(detector_type: str = "auto") -> RepoChangeDetector:
+def create_repo_change_detector(detector_type: str = "git") -> RepoChangeDetector:
     """Factory function to create RepoChangeDetector instance.
 
     Args:
-        detector_type: Type of detector ("git", "file_watcher", or "auto")
+        detector_type: Type of detector. Currently only "git" is supported.
 
     Returns:
         RepoChangeDetector instance
@@ -71,14 +70,5 @@ def create_repo_change_detector(detector_type: str = "auto") -> RepoChangeDetect
         from benedict.repo_change_detector.git_change_detector import GitChangeDetector
 
         return GitChangeDetector()
-    elif detector_type == "file_watcher":
-        from benedict.repo_change_detector.file_watcher_detector import FileWatcherDetector
-
-        return FileWatcherDetector()
-    elif detector_type == "auto":
-        # Try git first, fallback to file watcher
-        from benedict.repo_change_detector.git_change_detector import GitChangeDetector
-
-        return GitChangeDetector()  # Git detector can detect if repo is git or not
     else:
         raise ValueError(f"Unknown detector_type: {detector_type}")
