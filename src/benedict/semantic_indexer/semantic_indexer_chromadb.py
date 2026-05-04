@@ -125,7 +125,11 @@ class ChromaDBSemanticIndexer:
         # Clear existing index if force reindexing
         if force and collection.count() > 0:
             logger.info(f"Clearing existing index for {repo}")
-            self.client.delete_collection(name=collection.name)
+            collection_name = collection.name
+            self.client.delete_collection(name=collection_name)
+            # Remove stale collection from cache before recreating
+            if collection_name in self.collections:
+                del self.collections[collection_name]
             collection = self._get_collection(repo)  # Recreate empty collection
 
         # Get all files
@@ -172,10 +176,11 @@ class ChromaDBSemanticIndexer:
             return []
 
         # Stage 1: Find relevant directories via metadata search (if available)
+        # IMPORTANT: Scope metadata search to this specific repository to prevent context leakage
         relevant_dir_paths = set()
         if metadata_reader and workspace_path:
             try:
-                metadata_matches = metadata_reader.search_metadata(workspace_path, query)
+                metadata_matches = metadata_reader.search_metadata(workspace_path, query, repo=repo)
                 for match in metadata_matches:
                     # Store relative paths from repo root
                     rel_path = match["path"]
@@ -417,7 +422,7 @@ class ChromaDBSemanticIndexer:
                 content = repo_reader.read_file(repo, file_path)
 
                 # Skip very large files
-                if len(content) > 100000:  # ~100KB
+                if len(content) > 1000000:  # ~1MB
                     logger.debug(f"Skipping large file: {file_path}")
                     skipped_large_files += 1
                     continue
@@ -625,6 +630,7 @@ class ChromaDBSemanticIndexer:
             ".gradle",
             ".maven",
             ".pom",
+            ".benedict",
         }
 
         # Directories to exclude (virtual environments, dependencies, build artifacts, etc.)
@@ -686,6 +692,9 @@ class ChromaDBSemanticIndexer:
 
             # Check extension
             if any(file_path.lower().endswith(ext) for ext in code_extensions):
+                filtered.append(file_path)
+            # Explicitly include .benedict.method.yaml files (important project metadata)
+            elif file_path.endswith(".benedict.method.yaml"):
                 filtered.append(file_path)
             # Include files without extension that might be config files
             elif "/" not in file_path or file_path.split("/")[-1] in [

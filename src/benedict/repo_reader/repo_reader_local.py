@@ -73,10 +73,29 @@ class LocalRepoReader:
 
         files = []
         try:
+            # rglob("*") doesn't match dotfiles, so we need to handle them separately
+            # First, get all regular files (non-dotfiles)
             for p in full_path.rglob("*"):
                 if p.is_file():
                     rel_path = p.relative_to(full_path)
                     files.append(str(rel_path))
+            
+            # Also include .benedict.method.yaml and .metadata.* files (dotfiles)
+            # These need explicit globbing since rglob("*") skips them
+            for pattern in [".benedict.method.yaml", ".metadata.*"]:
+                # Check root level
+                for p in full_path.glob(pattern):
+                    if p.is_file():
+                        rel_path = p.relative_to(full_path)
+                        if str(rel_path) not in files:
+                            files.append(str(rel_path))
+                # Check subdirectories recursively
+                for p in full_path.rglob(f"**/{pattern}"):
+                    if p.is_file():
+                        rel_path = p.relative_to(full_path)
+                        if str(rel_path) not in files:
+                            files.append(str(rel_path))
+            
             return sorted(files)
         except Exception as e:
             logger.error(f"Error listing files in {path} for repo {repo}: {e}")

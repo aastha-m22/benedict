@@ -7,6 +7,125 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-04-28
+
+### Removed
+- **`FileWatcherDetector`**: Removed unused mtime-based change detector. It was wired into the `create_repo_change_detector` factory under `detector_type="file_watcher"` but never instantiated at runtime — the `"auto"` branch always returned `GitChangeDetector`. Deleted `src/benedict/repo_change_detector/file_watcher_detector.py`, removed exports from `repo_change_detector/__init__.py`, simplified the factory to only support `"git"`, and updated `main.py` to pass `detector_type="git"` explicitly.
+
+### Changed
+- Updated `docs/FILE_AND_GIT_WATCHING.md` and `plans/ARCHITECTURE.md` to reflect that `GitChangeDetector` is now the only `RepoChangeDetector` implementation.
+
+## [0.3.16] - 2026-03-13
+
+### Added
+- **Documentation**: Added `docs/FILE_AND_GIT_WATCHING.md` describing how file watching, git watching, and change detection work in Benedict.
+
+## [0.3.15] - 2026-02-09
+
+### Changed
+- **Disabled documentation file detection**: The automatic detection and notification of new .md files has been disabled as it was making Slack channels too noisy. Commit detection and notifications remain active.
+
+## [0.3.14] - 2026-02-09
+
+### Fixed
+- **Critical Bug Fixes in Slack Formatter:**
+  - Fixed placeholder collision vulnerability (Bug #1): Replaced simple numeric placeholders with UUID-based placeholders to prevent collisions with actual code content
+  - Fixed infinite loop in `split_message()` (Bug #5): Added progress check and maximum iteration limit to prevent hangs
+  - Fixed unsafe string replacement (Bug #3): Replaced `str.replace()` with position-based removal to avoid substring collisions
+  - Fixed unclosed code blocks in truncation (Bug #6): Added code block balance verification before truncating
+  - Fixed heading detection in code blocks (Bug #4): Headings inside code blocks are now correctly excluded from section splitting
+  - Fixed language identifier regex (Bug #2): Now supports language identifiers with hyphens, dots, plus signs, and hash (e.g., `python-3`, `c++`, `c#`, `tsx.js`)
+  - Fixed Mermaid/code block overlap (Bug #7): Mermaid blocks are now excluded from code block extraction using negative lookahead
+  - Fixed field truncation issue (Bug #8): Field chunks are now used directly instead of being truncated again
+- **Edge Case Improvements:**
+  - Added handling for very long single-line code blocks: splits at whitespace/punctuation boundaries
+  - Added URL length validation for Mermaid rendering: prevents extremely long URLs (>2000 chars)
+- **Code Quality:**
+  - Extracted magic numbers to named constants: `PARAGRAPH_SEARCH_WINDOW`, `NEWLINE_SEARCH_WINDOW`, `TRUNCATION_THRESHOLD_RATIO`, `CODE_BLOCK_BUFFER`, `MAX_ITERATIONS_SPLIT`
+  - Improved error handling and logging throughout the formatter
+
+## [0.3.13] - 2026-02-08
+
+### Added
+- Git file watcher that monitors all onboarded repositories for new commits and new .md files
+- Background service that periodically checks repositories and sends notifications to Slack channels
+- Watcher state persistence to track last checked commit time per repository
+- Configurable check interval via `BENEDICT_WATCHER_INTERVAL` environment variable (default: 300 seconds)
+- Automatic detection of new commits with file change details (added, modified, deleted files)
+- Automatic detection of new documentation files (.md files) in repositories
+- Graceful shutdown handling for the watcher service
+- Git file watcher now saves git patches to files in `.benedict/patches/` directory
+- LLM-based change analysis that understands what changed in commits
+- Automatic roadmap linking: changes are analyzed and linked to roadmap items
+- Semantic search integration to find related roadmap items based on changed files
+- Comprehensive change summaries that connect code changes to project roadmap
+- Roadmap file detection (ROADMAP.md, roadmap.md, docs/ROADMAP.md)
+- Change analysis includes: summary of changes, roadmap relationships, and affected roadmap items
+
+## [0.3.12] - 2026-02-08
+
+### Added
+- Automatic creation of default `.benedict.method.yaml` file when onboarding empty directories
+- Method file is automatically created during onboarding if directory is empty or method file doesn't exist
+- Helper method `_create_default_method_data()` to generate default method file structure
+- Helper method `_is_directory_empty()` to detect empty directories (ignoring system files like .git, .venv, etc.)
+
+### Fixed
+- Fixed method file creation failing when repository directory doesn't exist
+- `MethodWriter.write_method()` now creates parent directories before writing the method file
+- Prevents `FileNotFoundError` when creating method files in new repository paths
+- Improved error handling: method file write failures now raise exceptions instead of silently returning
+- Added file creation verification to ensure method files are actually written
+- Enhanced logging: success messages now use INFO level instead of DEBUG for better visibility
+
+## [0.3.11] - 2026-02-08
+
+### Added
+- Comprehensive features overview document (`docs/FEATURES_OVERVIEW.md`) documenting all implemented features
+- Complete feature inventory covering commands, LLM integration, semantic search, method files, metadata, and more
+- Usage examples and integration points documentation
+
+## [0.3.10] - 2026-02-08
+
+### Added
+- Code reading guide (`docs/CODE_READING_GUIDE.md`) explaining how to read and understand the codebase
+- Comprehensive documentation covering architecture patterns, reading strategies, and debugging tips
+- Guiding questions for engineers to navigate the codebase effectively
+
+## [0.3.9] - 2026-02-08
+
+### Fixed
+- Prevented metadata reader from scanning `.metadata.benedict` files in virtual environments and excluded directories
+- Added path filtering to exclude common build/cache directories (`.venv`, `venv`, `node_modules`, `site-packages`, etc.) from metadata scanning
+- Reduced unnecessary debug log noise from reading metadata files in third-party package directories
+
+## [0.3.8] - 2026-02-08
+
+### Added
+- Method file support for reading and updating `.benedict.method.yaml` files
+- `MethodReader` class to read and parse method files with project phases, concerns, and rules
+- `MethodWriter` class to write and update method files
+- Environment variable `BENEDICT_METHOD_FILE` to specify custom method file path
+- Automatic detection of missing method files with proactive guidance
+- Method file creation handler that generates complete method files with all concern definitions and sequence phases
+- Integration of method file information into context building for better project awareness
+- System prompt prioritization: method file creation is marked as FIRST PRIORITY when missing
+- Method file update detection and confirmation flow for phase, iteration, step, and concern updates
+- Support for parsing method file update requests (e.g., "set phase to sprint", "set documentation to complete")
+
+### Changed
+- Method file information is now included in repository context when available
+- System prompt now instructs LLM to prioritize method file creation when missing (marked as CRITICAL)
+
+## [0.3.7] - 2026-02-08
+
+### Added
+- Mermaid diagram rendering support for Slack messages
+- Automatic detection and rendering of Mermaid code blocks to images using mermaid.ink API
+- Mermaid diagrams are rendered as image blocks in Block Kit messages
+- Fallback to code block display if image rendering fails
+- Mermaid source code is included below rendered images for editing/copying
+
 ## [0.3.6] - 2026-02-08
 
 ### Fixed

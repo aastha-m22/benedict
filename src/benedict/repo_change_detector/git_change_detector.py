@@ -42,6 +42,10 @@ class GitChangeDetector:
         Returns:
             Dictionary with keys: 'added', 'modified', 'deleted', 'diff'
         """
+        if repo_path is None:
+            logger.warning("repo_path is None in detect_changes")
+            return {"added": [], "modified": [], "deleted": [], "diff": None}
+        
         repo_path = Path(repo_path).resolve()
 
         if not self.supports_git(repo_path):
@@ -58,6 +62,11 @@ class GitChangeDetector:
             # Check if branch has moved forward
             local_commit = self._get_commit_hash(repo_path, current_branch)
             remote_commit = self._get_commit_hash(repo_path, f"origin/{current_branch}")
+
+            # Handle case where commits might not be available
+            if not local_commit or not remote_commit:
+                logger.debug(f"Could not get commit hashes (local: {local_commit}, remote: {remote_commit})")
+                return {"added": [], "modified": [], "deleted": [], "diff": None}
 
             if local_commit == remote_commit:
                 logger.debug(f"Branch {current_branch} is up to date")
@@ -141,6 +150,9 @@ class GitChangeDetector:
 
     def _get_current_branch(self, repo_path: Path) -> Optional[str]:
         """Get current git branch."""
+        if not repo_path:
+            logger.warning("repo_path is None in _get_current_branch")
+            return None
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -155,6 +167,9 @@ class GitChangeDetector:
 
     def _git_fetch(self, repo_path: Path) -> None:
         """Fetch latest changes from remote."""
+        if not repo_path:
+            logger.warning("repo_path is None in _git_fetch")
+            return
         try:
             subprocess.run(
                 ["git", "fetch", "origin"],
@@ -167,6 +182,9 @@ class GitChangeDetector:
 
     def _get_commit_hash(self, repo_path: Path, ref: str) -> Optional[str]:
         """Get commit hash for ref."""
+        if not repo_path:
+            logger.warning(f"repo_path is None in _get_commit_hash (ref: {ref})")
+            return None
         try:
             result = subprocess.run(
                 ["git", "rev-parse", ref], cwd=repo_path, capture_output=True, text=True, check=True
@@ -177,6 +195,16 @@ class GitChangeDetector:
 
     def _git_diff(self, repo_path: Path, from_ref: str, to_ref: str) -> str:
         """Get diff between two refs."""
+        if repo_path is None or not from_ref or not to_ref:
+            logger.warning(f"Invalid parameters for git diff: repo_path={repo_path}, from_ref={from_ref}, to_ref={to_ref}")
+            return ""
+        
+        # Ensure repo_path is a Path object
+        repo_path = Path(repo_path).resolve()
+        if not repo_path.exists():
+            logger.warning(f"Repository path does not exist: {repo_path}")
+            return ""
+        
         try:
             result = subprocess.run(
                 ["git", "diff", "--name-status", from_ref, to_ref],
@@ -226,6 +254,9 @@ class GitChangeDetector:
         self, repo_path: Path, file_path: str, ref: str
     ) -> Optional[datetime]:
         """Get last commit time for a specific file."""
+        if not repo_path:
+            logger.warning(f"repo_path is None in _get_file_last_commit_time (file: {file_path}, ref: {ref})")
+            return None
         try:
             result = subprocess.run(
                 ["git", "log", "-1", "--format=%ct", ref, "--", file_path],

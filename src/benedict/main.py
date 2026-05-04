@@ -153,7 +153,7 @@ def main():
         from benedict.protocols.repo_change_detector import create_repo_change_detector
 
         metadata_generator = MetadataGenerator()
-        change_detector = create_repo_change_detector(detector_type="auto")
+        change_detector = create_repo_change_detector(detector_type="git")
         semantic_indexer = create_semantic_indexer(
             provider="chromadb",
             persist_directory=chroma_db_path,
@@ -210,7 +210,12 @@ def main():
     handler = SocketModeHandler(slack_app, app_token)
     logger.info("✅ Bot is running! Press Ctrl+C to stop.")
     logger.info("Waiting for events...")
-    handler.start()
+    
+    try:
+        handler.start()
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

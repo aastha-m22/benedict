@@ -210,9 +210,30 @@ def create_slack_app(agent: RepoAgent) -> App:
             logger.info(f"User: {user_id}")
             logger.info(f"Cleaned text: {text_clean}")
 
+            # Check for architect onboarding first
+            if agent.is_architect_onboard_command(text_clean):
+                success, message = agent.handle_onboard_architect(channel_id, user_id, text_clean)
+                format_and_send_message(say, message, thread_ts, message_type="command")
+                return
+
+            # Check if this is architect channel - route to architect handler
+            architect_channel = agent.get_architect_channel()
+            if architect_channel == channel_id:
+                # Route to architect handler (skip normal command routing)
+                success, message = agent.handle_architect_query(channel_id, text_clean, thread_ts)
+                if not success and "⚠️" in message:
+                    format_and_send_message(say, message, thread_ts, message_type="error")
+                else:
+                    format_and_send_message(say, message, thread_ts, message_type="conversation")
+                return
+
             # Route based on command type
             if agent.is_onboard_command(text_clean):
                 success, message = agent.handle_onboard(channel_id, user_id, text_clean)
+                format_and_send_message(say, message, thread_ts, message_type="command")
+
+            elif agent.is_offboard_command(text_clean):
+                success, message = agent.handle_offboard(channel_id, user_id)
                 format_and_send_message(say, message, thread_ts, message_type="command")
 
             elif agent.is_status_command(text_clean):
@@ -233,6 +254,20 @@ def create_slack_app(agent: RepoAgent) -> App:
 
             elif agent.is_update_index_command(text_clean):
                 success, message = agent.handle_update_index(channel_id, user_id, text_clean)
+                format_and_send_message(say, message, thread_ts, message_type="command")
+
+            elif agent.is_create_method_command(text_clean):
+                repo = agent.get_channel_repo(channel_id)
+                if not repo:
+                    success, message = (
+                        False,
+                        "⚠️ Not Onboarded\n\n"
+                        "This channel hasn't been onboarded yet.\n\n"
+                        "*Next steps:*\n"
+                        "• Use `@agent onboard repo your-org/your-repo` to get started",
+                    )
+                else:
+                    success, message = agent.handle_create_method(channel_id, repo)
                 format_and_send_message(say, message, thread_ts, message_type="command")
 
             else:
@@ -277,9 +312,12 @@ def create_slack_app(agent: RepoAgent) -> App:
             if bot_user_id and f"<@{bot_user_id}>" in text:
                 return
 
-            # Check if channel is onboarded
+            # Check if channel is onboarded (regular project or architect)
             repo = agent.get_channel_repo(channel_id)
-            if not repo:
+            architect_channel = agent.get_architect_channel()
+            is_architect_channel = architect_channel == channel_id
+            
+            if not repo and not is_architect_channel:
                 return  # Channel not onboarded, skip processing
 
             # Check if this is a thread reply where Benedict has already participated
@@ -320,9 +358,17 @@ def create_slack_app(agent: RepoAgent) -> App:
                 try:
                     # Use thread_ts if in thread, otherwise use message_ts for new conversation
                     conversation_ts = thread_ts or message_ts
-                    success, message = agent.handle_conversation(
-                        channel_id, text, conversation_ts
-                    )
+                    
+                    # Route to architect handler if this is architect channel
+                    if is_architect_channel:
+                        success, message = agent.handle_architect_query(
+                            channel_id, text, conversation_ts
+                        )
+                    else:
+                        success, message = agent.handle_conversation(
+                            channel_id, text, conversation_ts
+                        )
+                    
                     if not success and "⚠️" in message:
                         format_and_send_message(say, message, conversation_ts, message_type="error")
                     else:

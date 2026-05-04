@@ -1,0 +1,215 @@
+method:
+  # PROGRAM COUNTER
+  pc:
+    phase: sprint
+    iteration: 3
+    step: document\
+
+  # =====================
+  # CONCERNS (declaration)
+  # =====================
+  concern_definitions:
+    scope:
+      description: the boundary of what the project does and does not do
+      states: [fluid, narrowing, locked, reconsidering]
+      rules:
+        - scope must be explicitly stated in every project
+        - scope changes are only permitted during conception and review phases
+        - during sprint, scope is locked — new ideas go to BACKLOG.md
+        - scope must be defined in terms of what is IN and what is OUT
+
+    documentation:
+      description: all written artifacts that make the project understandable, usable, and maintainable
+      states: [not_started, drafting, in_progress, complete, stale]
+      rules:
+        - only documented software should be delivered
+        - documentation gates development — no feature ships without docs
+        - each project must have at minimum WHY.md, README.md, ROADMAP.md
+        - documentation must be reviewed for staleness at every review phase
+        - documentation is a first-class deliverable, not an afterthought
+
+    development:
+      description: all code, configuration, and infrastructure work
+      states: [blocked, not_started, prototyping, active, stabilising, complete]
+      rules:
+        - development is not allowed in conception phase
+        - development in design phase is limited to throwaway prototypes
+        - development in sprint phase must follow the roadmap — no unplanned work
+        - development must produce deployable output at the end of each sprint
+        - development is gated by documentation — build it, then document it, then communicate it
+
+    communication:
+      description: all external-facing announcements, posts, updates, and promotion of the project
+      states: [not_applicable, pending, drafting, published]
+      rules:
+        - every delivered and documented feature must be communicated
+        - communication is the final step in the sprint loop — it cannot be skipped
+        - communication is not marketing fluff — it is a factual account of what changed and why
+        - no communication without documentation — you cannot announce what is not written down
+        - communication debt is project debt — uncommunicated features are invisible features
+
+    operations:
+      description: all work related to deploying, running, monitoring, and maintaining the project
+      states: [not_applicable, not_started, defining, active, reviewing]
+      rules:
+        - operations strategy must be defined during design phase
+        - the project must be in a deployable state at the end of every sprint
+        - operational health must be assessed during every review phase
+        - operations includes CI/CD, monitoring, hosting, incident response
+        - if the project cannot be operated, it cannot be delivered
+
+    feedback:
+      description: all signals — internal or external — about how the project is performing against its goals
+      states: [not_applicable, not_started, collecting, synthesising, actioned]
+      rules:
+        - feedback must be actively sought, not passively received
+        - feedback is collected during sprint, synthesised during review
+        - feedback that challenges scope must be logged and deferred to review phase
+        - feedback drives the decision at the end of review — next sprint, harden, expand, or kill
+        - absence of feedback is itself feedback — it means no one is using it
+
+  # =====================
+  # CONCERNS (current state)
+  # =====================
+  concerns:
+    scope: locked
+    documentation: in_progress
+    development: active
+    communication: pending
+    operations: not_started
+    feedback: not_started
+
+  # =====================
+  # SEQUENCE
+  # =====================
+  sequence:
+    conception:
+      status: complete
+      iteration: 2
+      loop: define → challenge → refine
+      exit: motivation, problem, and scope are stable enough to design against
+      addresses: [motivation, problem_definition, scope]
+      artifacts: [WHY.md, README.md]
+      concerns:
+        scope:
+          expected_state: fluid
+          rule: scope is fluid — explore freely, nothing is committed
+          practice: brainstorm features, challenge assumptions, kill bad ideas early
+        documentation:
+          expected_state: drafting
+          rule: capture motivation and problem definition as artifacts
+          practice: write WHY.md and initial README.md
+        development:
+          expected_state: not_started
+          rule: no development — code is not allowed in this phase
+          practice: none
+        communication:
+          expected_state: not_applicable
+          rule: no external communication yet
+          practice: internal notes only
+        operations:
+          expected_state: not_applicable
+          rule: not applicable
+          practice: none
+        feedback:
+          expected_state: collecting
+          rule: seek input on problem definition and scope
+          practice: challenge your own assumptions, talk to potential users
+
+    design:
+      status: complete
+      iteration: 1
+      loop: sketch → evaluate → revise
+      exit: technical design and roadmap are concrete enough to build against
+      addresses: [technical_design, roadmap]
+      artifacts: [SYSTEM_SPEC.md, ROADMAP.md]
+      concerns:
+        scope:
+          expected_state: narrowing
+          rule: scope narrows — lock features for first release
+          practice: write explicit scope boundary in SYSTEM_SPEC.md
+        documentation:
+          expected_state: in_progress
+          rule: technical design must be documented before building starts
+          practice: write SYSTEM_SPEC.md and ROADMAP.md
+        development:
+          expected_state: prototyping
+          rule: prototyping only — spikes to validate design, not production code
+          practice: throwaway code to test assumptions
+        communication:
+          expected_state: not_applicable
+          rule: not applicable
+          practice: none
+        operations:
+          expected_state: defining
+          rule: define how the project will be operated
+          practice: document deployment, monitoring, maintenance approach
+        feedback:
+          expected_state: collecting
+          rule: validate design against scope and problem definition
+            practice: review SYSTEM_SPEC against WHY.md — does the design solve the problem?
+
+    sprint:
+      status: active
+      iteration: 3
+      loop: build → document → communicate
+      exit: feature is delivered, documented, and communicated
+      addresses: [development, documentation, communication]
+      artifacts: [CHANGELOG.md]
+      concerns:
+        scope:
+          expected_state: locked
+          rule: scope is locked — no new features unless gated through review
+          practice: reject scope changes, log them in BACKLOG.md for next review
+        documentation:
+          expected_state: in_progress
+          rule: every delivered feature must be documented before it is communicated
+          practice: update README, write CHANGELOG entry, update API docs if applicable
+        development:
+        expected_state: active
+          rule: build only what is on the roadmap for this sprint
+          practice: implement feature, write tests, ensure it works end to end
+        communication:
+          expected_state: drafting
+          rule: every documented feature must be communicated
+          practice: write release note, post update, announce change
+        operations:
+          expected_state: active
+          rule: deployable state at end of each sprint
+          practice: ensure CI passes, deployment works, nothing is broken
+        feedback:
+          expected_state: collecting
+          rule: collect feedback on delivered features
+          practice: note bugs, usability issues, user reactions
+
+    review:
+      status: pending
+      iteration: 0
+      loop: measure → assess → decide
+      exit: decision made — next sprint, hardening, or expansion
+      addresses: [feedback, operations]
+      artifacts: []
+      concerns:
+        scope:
+          expected_state: reconsidering
+          rule: scope can be reconsidered — expand, contract, or pivot
+          practice: review BACKLOG.md, assess new feature requests against project goals
+        documentation:
+          expected_state: complete
+          rule: review documentation completeness
+          practice: audit all artifacts — are they current, accurate, useful?
+        development:
+          expected_state: stabilising
+          rule: no new development — only bug fixes if critical
+          practice: stabilise, clean up tech debt if time allows
+        communication:
+          expected_state: published
+          rule: communicate project status and direction
+          practice: write status update, share roadmap changes
+        operations:
+          expected_state: reviewing
+          rule: assess operational health
+          practice: review uptime, performance, maintenance burden
+        feedback:
+          expected_state: synthesising
+          rule: synthesise all feedback into actionable

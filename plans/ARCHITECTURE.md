@@ -47,7 +47,6 @@ python -m benedict.main
 
 #### Repository Change Detection
 - **`repo_change_detector/git_change_detector.py`** - Git-based change detection
-- **`repo_change_detector/file_watcher_detector.py`** - File watcher-based change detection
 
 #### Conversation History Indexing
 - **`indexers/slack_history_indexer.py`** - Slack conversation history indexer

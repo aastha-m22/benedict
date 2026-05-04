@@ -1,0 +1,143 @@
+content_type: code
+summary: Code directory with 11 files and 1 subdirectories
+purpose: 'Source code directory: commands'
+files:
+- name: .metadata.benedict
+  content_type: code
+  purpose: Code file
+  key_functions: []
+  key_classes: []
+- name: __init__.py
+  content_type: code
+  purpose: Command Classification System
+  key_functions: []
+  key_classes: []
+- name: command_classifier.py
+  content_type: code
+  purpose: Command Classifier
+  key_functions:
+  - __init__
+  - _compile_patterns
+  - classify
+  - _match_command
+  - _extract_parameters
+  - _extract_additional_params
+  - _calculate_confidence
+  - get_available_commands
+  key_classes:
+  - CommandClassifier
+- name: command_definitions.py
+  content_type: code
+  purpose: Command Definitions
+  key_functions: []
+  key_classes:
+  - CommandType
+  - CommandIntent
+  - CommandDefinition
+- name: llm_classifier.py
+  content_type: code
+  purpose: LLM-Based Command Classifier
+  key_functions:
+  - __init__
+  - classify
+  - _build_prompt
+  - _call_llm_with_tools
+  - _parse_response
+  key_classes:
+  - LLMCommandClassifier
+- name: metadata_tools.py
+  content_type: code
+  purpose: Metadata File Tools
+  key_functions:
+  - __init__
+  - get_schema
+  - execute
+  - __init__
+  - get_schema
+  - execute
+  - __init__
+  - get_schema
+  - execute
+  key_classes:
+  - GetFileMetadataTool
+  - ListKeyFilesTool
+  - GetRepositorySummaryTool
+- name: method_tools.py
+  content_type: code
+  purpose: Method File Tools
+  key_functions:
+  - __init__
+  - get_schema
+  - execute
+  - __init__
+  - get_schema
+  - execute
+  - __init__
+  - get_schema
+  - execute
+  - __init__
+  - get_schema
+  - execute
+  key_classes:
+  - UpdatePCTool
+  - UpdateConcernTool
+  - GetMethodStateTool
+  - UpdateSequencePhaseTool
+- name: tool_executor.py
+  content_type: code
+  purpose: Tool Executor
+  key_functions:
+  - __init__
+  - execute
+  - _execute_update_pc
+  - _execute_update_concern
+  - _execute_get_method_state
+  - _execute_update_sequence_phase
+  - _execute_get_file_metadata
+  - _execute_list_key_files
+  - _execute_get_repository_summary
+  key_classes:
+  - MethodMetadataToolExecutor
+- name: tool_framework.py
+  content_type: code
+  purpose: Tool Framework
+  key_functions:
+  - __init__
+  - get_schema
+  - execute
+  - validate
+  - __init__
+  - register
+  - get
+  - list_tools
+  - to_anthropic_tools
+  - execute
+  key_classes:
+  - ToolResult
+  - Tool
+  - ToolRegistry
+- name: tool_generator.py
+  content_type: code
+  purpose: Tool Generator
+  key_functions:
+  - to_function_schema
+  - to_openai_functions
+  - to_anthropic_tools
+  - __init__
+  - generate_tools
+  - _generate_method_tools
+  - _generate_metadata_tools
+  key_classes:
+  - MethodMetadataTools
+  - MethodMetadataToolGenerator
+- name: tool_registry_factory.py
+  content_type: code
+  purpose: Tool Registry Factory
+  key_functions:
+  - create_tool_registry
+  - create_tool_registry_from_method_data
+  key_classes: []
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code
