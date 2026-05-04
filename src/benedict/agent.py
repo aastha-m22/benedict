@@ -393,16 +393,7 @@ class RepoAgent:
         )
         
         return True, message
-        
-        if self.conversation_history_indexer:
-            message += (
-                f"\n📚 I'm indexing all conversation history from this channel "
-                f"so I can reference past discussions and summarize them."
-            )
-        
-        message += f"\n\nTry: `@agent status` to see the details."
-        
-        return (True, message)
+
 
     def handle_status(self, channel_id: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Handle status command.
