@@ -1,5 +1,7 @@
 # LLM-Based Command Classifier: Technical Design Document
 
+**Status (v0.4.0):** Method-file tools and `update_method` examples in this document were removed from the runtime. Classifier tools that remain are metadata-only.
+
 ## Overview
 
 An LLM-powered command classification system that uses natural language understanding to map user input to structured command intents. Instead of pattern matching, this system leverages LLM reasoning to understand user intent and extract parameters.

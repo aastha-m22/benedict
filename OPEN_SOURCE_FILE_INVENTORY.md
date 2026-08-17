@@ -281,8 +281,8 @@ These files should be reviewed but likely don't need changes:
 
 5. **.benedict.method.yaml**
    - Location: `/.benedict.method.yaml`
-   - Status: ✅ Exists
-   - Action: Review content for sensitive information
+   - Status: Exists as an ordinary repo file. Not a Benedict runtime feature (removed in 0.4.0).
+   - Action: Optional; no product behavior depends on it
 
 ---
 
