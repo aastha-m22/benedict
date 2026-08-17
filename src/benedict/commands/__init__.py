@@ -20,6 +20,8 @@ from .metadata_tools import (
     GetRepositorySummaryTool,
 )
 from .llm_classifier import LLMCommandClassifier
+from .github_tools import RunGithubTool
+from .tool_loop import run_tool_loop
 
 __all__ = [
     "CommandClassifier",
@@ -39,4 +41,6 @@ __all__ = [
     "ListKeyFilesTool",
     "GetRepositorySummaryTool",
     "LLMCommandClassifier",
+    "RunGithubTool",
+    "run_tool_loop",
 ]

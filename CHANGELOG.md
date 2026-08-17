@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Package `__version__` in `src/benedict/__init__.py` now matches `pyproject.toml`.
 
+## [0.3.19] - 2026-08-17
+
+### Added
+- **Design analysis**: Added `plans/PROMPT_FIRST_VS_TOOLS.md` and `plans/PROMPT_FIRST_VS_TOOLS.html` describing how Benedict uses LLM tools today and whether a prompt-first approach would be a better default.
+
+## [0.3.18] - 2026-08-17
+
+### Added
+- **GitHub CLI tool (`run_github`)**: Benedict can run `gh` in the onboarded workspace repository during conversations. The model supplies argv; code locks the binary to `gh`, cwd to the repo, timeout, and output size. Results are fed back through a short tool loop so the model can interpret them instead of dumping raw CLI output to Slack. Mutating GitHub (create/merge/close/comment) is left to the prompt (ask first). Requires `gh` installed and authenticated on the host.
+
 ## [0.3.17] - 2026-04-28
 
 ### Removed
