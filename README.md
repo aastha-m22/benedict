@@ -1,434 +1,286 @@
-# Slack Repo Agent
+# Benedict
 
-A Slack bot that links channels to repositories and provides intelligent, repo-scoped AI agent conversations.
+A Slack bot that links a channel to a local git repository and answers questions about that repo with Claude, semantic search, and project method/metadata files.
 
-## Overview
+Use Benedict when a Slack channel is the working surface for a codebase and you want an agent that already knows the repo, the thread history, and the project's current phase.
 
-This bot provides:
-- ✅ Slack bot responding to @mentions
-- ✅ Channel → Repository mapping
-- ✅ Persistent state across restarts
-- ✅ Thread-based conversations with history
-- ✅ LLM integration (Claude 3.5 Sonnet)
-- ✅ Semantic code search (ChromaDB + sentence-transformers)
-- ✅ Local repository access
-- ❌ GitHub API integration (coming in M2)
-- ❌ Notion/GDocs access (coming in v2)
+## Current status
 
-## Features
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.3.20). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
-### Commands
+**In production use today:**
 
-1. **Onboard a channel**
-   ```
-   @benedict onboard repo foo/bar
-   ```
-   Links the current channel to a repository.
+- Slack `@mentions` and thread replies, with conversation history persisted in `state.json`
+- Channel → repository mapping (onboard, offboard, status)
+- Claude 3.5 Sonnet (override with `ANTHROPIC_MODEL`) plus a stub mode if the API key is missing
+- Semantic code search with ChromaDB and sentence-transformers; git-based incremental reindex
+- Per-channel workspaces (symlink or copy of the local repo)
+- `.benedict.method.yaml` for phase, concerns, and rules
+- `.metadata.benedict` directory summaries that boost search
+- Architect channel for cross-project questions
+- Slack conversation history indexing into the workspace
+- GitHub CLI (`gh`) during conversations, when `gh` is installed and authenticated on the host
 
-2. **Check status**
-   ```
-   @benedict status
-   ```
-   Shows which repository the channel is linked to.
+**Not implemented:** GitHub API as a `RepoReader`, Notion, Google Docs, Cursor session logs, and a background git/file watcher process. Changelog entries for a watcher describe work that is no longer in the tree. `GitChangeDetector` remains and is used for incremental indexing.
 
-3. **Ask questions**
-   ```
-   @benedict what's the architecture?
-   ```
-   The bot uses semantic search and LLM to provide intelligent answers.
+## How it works
 
-## Prerequisites
-
-- Python 3.8 or higher
-- A Slack workspace where you can create apps
-- Admin access to install apps to the workspace
-
-## Slack App Setup
-
-**📖 See [SLACK_SETUP.md](SLACK_SETUP.md) for complete step-by-step setup instructions.**
-
-Quick summary:
-1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
-2. Enable Socket Mode and create app token (`xapp-...`)
-3. Add bot scopes: `chat:write`, `channels:history`, `channels:read`
-4. Subscribe to `app_mention` event
-5. Install app to workspace and get bot token (`xoxb-...`)
-6. Add both tokens to `.env` file
-
-## Installation
-
-### 1. Clone or Download
-
-```bash
-git clone <your-repo-url>
-cd slack-repo-agent
-```
-
-Or download the files directly.
-
-### 2. Install uv (if not already installed)
-
-`uv` is a fast Python package installer and resolver. Install it with:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Or using Homebrew (macOS):
-```bash
-brew install uv
-```
-
-### 3. Install Dependencies
-
-**Using Make (recommended):**
-```bash
-make sync
-```
-
-Or:
-```bash
-make install
-```
-
-**Or manually with uv:**
-```bash
-uv pip install -e .
-```
-
-**Using a virtual environment (recommended):**
-```bash
-make venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-make sync
-```
-
-### 4. Configure Environment Variables
-
-Create a `.env` file in the project directory:
-
-```bash
-SLACK_BOT_TOKEN=xoxb-your-bot-token-here
-SLACK_APP_TOKEN=xapp-your-app-token-here
-```
-
-Replace the values with your actual tokens from the Slack App setup (see [SLACK_SETUP.md](SLACK_SETUP.md)).
-
-### 5. Run the Bot
-
-**Using Make:**
-```bash
-make run
-```
-
-**Or manually:**
-```bash
-python -m benedict.main
-```
-
-You should see:
-```
-✅ Bot is running! Press Ctrl+C to stop.
-```
-
-### Quick Start with Make
-
-```bash
-# Create virtual environment and install dependencies
-make setup
-source .venv/bin/activate  # uv creates .venv by default
-
-# Sync dependencies (uv's recommended way)
-make sync
-
-# Check dependencies
-make deps
-
-# Run the bot
-make run
-```
-
-## Usage
-
-### 1. Invite the Bot to a Channel
-
-In any Slack channel, type:
-```
-/invite @benedict
-```
-
-### 2. Onboard the Channel
-
-Tell the bot which repository this channel is about:
-```
-@benedict onboard repo foo/bar
-```
-
-The bot will confirm:
-```
-✅ Onboarded! This channel is now linked to `foo/bar`.
-I'll remember this repo for all our conversations here.
-```
-
-### 3. Check Status
+1. You invite Benedict to a Slack channel and onboard a local repository.
+2. Benedict creates a workspace for that channel and indexes the repo on first use.
+3. A mention or a reply in an existing Benedict thread builds context (README, method file, metadata, semantic hits, recent actions) and asks Claude.
+4. Explicit commands (onboard, status, index, method file) skip the general Q&A path and run dedicated handlers.
 
 ```
-@benedict status
+Slack event → slack_app.py → RepoAgent
+  → workspace + semantic index + method/metadata context
+  → Claude (optional tools) → formatted Slack reply
 ```
 
-Response:
+## Commands
+
+Mention `@benedict` (or `@agent`) in the channel.
+
+| Command | What it does |
+| --- | --- |
+| `onboard repo org/repo` | Links the channel to a local checkout. Also accepts `this channel is for org/repo` or an absolute path. |
+| `offboard` | Removes the channel mapping. |
+| `status` | Shows the linked repo and when it was onboarded. |
+| `update index` | Incremental reindex. Add `force` for a full rebuild. |
+| `create method file` | Writes a default `.benedict.method.yaml` if one is missing. |
+| `onboard architect` | Marks the channel as the architect channel for cross-project questions. |
+| Any other question | Repo-scoped conversation with search and LLM. |
+
+Natural-language method updates (`update phase`, `show method file`) go through the LLM tool classifier when a workspace and LLM are available.
+
+### Onboard a channel
+
 ```
-📊 Channel Status
-━━━━━━━━━━━━━━━
-📺 Channel: #proj-foo
-🔗 Repository: foo/bar
-⏰ Onboarded: 2026-02-01 20:30 UTC
-👤 By: @michael
+@benedict onboard repo acme/widget
 ```
 
-### 4. Ask Questions
+Benedict looks for the checkout in this order:
+
+1. The text as an absolute path
+2. Directories in `BENEDICT_REPO_SOURCE_DIRS` (comma-separated), as `org/repo` and as the repo name alone
+3. `~/Projects/<repo>` if `BENEDICT_REPO_SOURCE_DIRS` is unset
+4. The current working directory
+
+It does not clone from GitHub. The directory must already exist on the machine that runs the bot.
+
+### Ask a question
 
 ```
 @benedict what files handle authentication?
 ```
 
-The bot will:
-1. Use semantic search to find relevant files
-2. Build context from repository code
-3. Generate intelligent responses using Claude LLM
-4. Maintain conversation history in the thread
+Benedict searches the index, reads relevant files from the workspace, and replies in the thread. Later replies in that thread are treated as continuation even without a mention, once Benedict has already participated.
 
-## Testing Checklist
+### GitHub CLI
 
-Use this checklist to verify everything works:
+If GitHub CLI is installed and authenticated on the host, Benedict can run `gh` in the onboarded workspace repo (list PRs, inspect issues, and similar). Mutating GitHub (create, merge, close, comment) is supposed to be confirmed with you first. This is not a general shell.
 
-### Basic Setup
-- [ ] Completed Slack app setup (see [SLACK_SETUP.md](SLACK_SETUP.md))
-- [ ] Created `.env` file with tokens
-- [ ] Installed Python dependencies (`make sync` or `make install`)
-- [ ] Started bot successfully (`make run`)
+## Prerequisites
 
-### Single Channel Test
-- [ ] Created test channel `#test-foo`
-- [ ] Invited bot to channel
-- [ ] Tried talking without onboarding (should get prompt)
-- [ ] Onboarded: `@benedict onboard repo foo/bar`
-- [ ] Got success confirmation
-- [ ] Checked status: `@benedict status`
-- [ ] Asked question: `@benedict what's the code structure?`
-- [ ] Got stub response mentioning the repo
+- Python 3.10 or higher
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- A Slack workspace where you can create apps
+- An Anthropic API key for LLM answers (`ANTHROPIC_API_KEY`)
+- Optional: [GitHub CLI](https://cli.github.com/) (`gh`) for GitHub tools
+- Optional: local git checkouts of the repos you want to onboard
 
-### Multiple Channels Test
-- [ ] Created second channel `#test-bar`
-- [ ] Invited bot to second channel
-- [ ] Onboarded: `@benedict onboard repo baz/qux`
-- [ ] Verified status shows different repo
-- [ ] Went back to first channel
-- [ ] Verified status still shows `foo/bar`
+## Slack app setup
 
-### Persistence Test
-- [ ] Stopped bot (Ctrl+C)
-- [ ] Verified `state.json` file exists
-- [ ] Checked `state.json` contains channel mappings
-- [ ] Restarted bot
-- [ ] Checked status in channel (should still show repo)
+See [docs/SLACK_SETUP.md](docs/SLACK_SETUP.md) for the full walkthrough.
 
-### Edge Cases
-- [ ] Onboarded same channel twice (should update)
-- [ ] Tried invalid repo format (should show error)
-- [ ] Tried status in non-onboarded channel (should prompt)
+Short version:
 
-## File Structure
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps).
+2. Enable Socket Mode and create an app token (`xapp-...`).
+3. Add bot scopes: `chat:write`, `channels:history`, `channels:read`.
+4. Subscribe to `app_mention` (and `message.channels` / `message.groups` if you want thread replies without a mention).
+5. Install the app and copy the bot token (`xoxb-...`).
+6. Put both tokens in `.env`.
 
-```
-slack-repo-agent/
-├── src/
-│   └── benedict/                    # Main package
-│       ├── __init__.py
-│       ├── main.py                  # Entry point (composition root)
-│       ├── agent.py                 # Main agent logic
-│       ├── slack_app.py             # Slack Bolt app configuration
-│       ├── models/                  # Domain models
-│       │   ├── __init__.py
-│       │   └── conversation.py      # Conversation and Message models
-│       ├── protocols/               # Protocol definitions (interfaces)
-│       │   ├── __init__.py
-│       │   ├── llm.py               # LLM protocol
-│       │   ├── repo_reader.py       # Repository reader protocol
-│       │   ├── semantic_indexer.py  # Semantic search protocol
-│       │   └── conversation_repository.py  # Conversation repository protocol
-│       ├── llm/                     # LLM implementations
-│       │   ├── __init__.py
-│       │   ├── llm_claude.py        # Claude implementation
-│       │   └── llm_mock.py          # Mock implementation
-│       ├── repo_reader/              # Repository reader implementations
-│       │   ├── __init__.py
-│       │   ├── repo_reader_local.py # Local filesystem implementation
-│       │   └── repo_reader_mock.py  # Mock implementation
-│       ├── semantic_indexer/         # Semantic indexer implementations
-│       │   ├── __init__.py
-│       │   ├── semantic_indexer_chromadb.py  # ChromaDB implementation
-│       │   └── semantic_indexer_mock.py     # Mock implementation
-│       ├── conversation_repository/   # Conversation repository implementations
-│       │   ├── __init__.py
-│       │   ├── conversation_repository_json.py  # JSON implementation
-│       │   └── conversation_repository_mock.py  # Mock implementation
-│       └── utils/                    # Utility functions
-│           ├── __init__.py
-│           └── context.py           # Context building utilities
-├── Makefile                          # Development commands
-├── pyproject.toml                    # Python project configuration and dependencies
-├── README.md                  # This file
-├── SLACK_SETUP.md             # Slack app setup guide
-├── ARCHITECTURE.md            # Architecture documentation
-├── CLEANUP_SUMMARY.md         # Cleanup documentation
-├── .env                       # Your tokens (DO NOT COMMIT)
-├── .gitignore                 # Git ignore rules
-└── state.json                 # Runtime state (created automatically)
+## Installation
+
+```bash
+git clone https://github.com/mkarots/benedict.git
+cd benedict
 ```
 
-## State File
+Install [uv](https://docs.astral.sh/uv/) if needed:
 
-The bot stores channel mappings in `state.json`:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: brew install uv
+```
+
+Then:
+
+```bash
+make setup
+source .venv/bin/activate
+make sync-dev
+```
+
+Without Make:
+
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+```
+
+## Configuration
+
+Create `.env` in the project directory (or set `BENEDICT_ENV_FILE`):
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_APP_TOKEN=xapp-your-app-token-here
+ANTHROPIC_API_KEY=your-anthropic-api-key
+# Optional
+# ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+# BENEDICT_REPO_SOURCE_DIRS=/Users/you/Projects,/opt/repos
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SLACK_BOT_TOKEN` | required | Slack bot token |
+| `SLACK_APP_TOKEN` | required | Slack Socket Mode token |
+| `ANTHROPIC_API_KEY` | optional | Claude. Without it, Benedict runs in stub mode. |
+| `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Claude model id |
+| `BENEDICT_DATA_DIR` | repo root | Root for state, workspaces, and ChromaDB |
+| `BENEDICT_WORKSPACES_DIR` | `{data_dir}/workspaces` | Per-channel workspaces |
+| `BENEDICT_WORKSPACE_COPY_MODE` | `symlink` | `symlink` or `copy` |
+| `BENEDICT_CHROMA_DB_DIR` | `{data_dir}/.chroma_db` | Vector index |
+| `BENEDICT_STATE_FILE` | `{data_dir}/state.json` | Channel mappings and conversations |
+| `BENEDICT_ENV_FILE` | `{repo}/.env` | dotenv path |
+| `BENEDICT_REPO_SOURCE_DIRS` | `~/Projects` | Comma-separated roots used during onboard |
+| `BENEDICT_CHUNK_SIZE` | `2000` | Index chunk size in characters |
+| `BENEDICT_METHOD_FILE` | `.benedict.method.yaml` | Override method file name/path |
+| `BENEDICT_METADATA_FILE` | `.metadata.benedict` | Override metadata file name/path |
+
+## Run
+
+```bash
+make run
+```
+
+Or:
+
+```bash
+python -m benedict.main
+# after install: benedict
+```
+
+You should see: `Bot is running! Press Ctrl+C to stop.`
+
+## Usage
+
+1. Invite the bot: `/invite @benedict`
+2. Onboard: `@benedict onboard repo acme/widget`
+3. Confirm: `@benedict status`
+4. Ask: `@benedict what's the architecture?`
+
+If the repo has no `.benedict.method.yaml`, Benedict will push you to create one. That file is the source of truth for phase, iteration, and concerns.
+
+## State and workspaces
+
+Channel mappings and thread conversations live in `state.json`:
 
 ```json
 {
   "channels": {
     "C12345ABC": {
-      "repo": "foo/bar",
+      "repo": "acme/widget",
       "onboarded_at": "2026-02-01T20:30:00Z",
       "onboarded_by": "U123456"
     }
-  }
+  },
+  "conversations": {},
+  "architect": {}
 }
 ```
 
-This file is created automatically and persists across restarts.
+Each onboarded channel also gets a directory under `workspaces/<channel_id>/` containing a symlink (or copy) of the repo plus action logs and indexed Slack history. `state.json` and `.chroma_db/` are gitignored.
 
-## Troubleshooting
+## Project layout
 
-### Bot doesn't respond
-
-**Check:**
-1. Is the bot running? (`python -m benedict.main` or `benedict` should show "Bot is running!")
-2. Is the bot invited to the channel? (`/invite @benedict`)
-3. Are you @mentioning the bot? (Just typing won't work)
-4. Check the terminal for error messages
-
-### "Missing SLACK_BOT_TOKEN" or "Missing SLACK_APP_TOKEN" error
-
-**Fix:**
-See [SLACK_SETUP.md](SLACK_SETUP.md) for detailed troubleshooting steps.
-
-### Bot responds but says "This channel hasn't been onboarded yet"
-
-**Fix:**
-1. Run the onboard command: `@benedict onboard repo your-org/your-repo`
-2. Make sure you're using the format `org/repo` (e.g., `acme/widget`)
-
-### State file gets corrupted
-
-**Fix:**
-1. Stop the bot
-2. Delete `state.json`
-3. Restart the bot (it will create a new empty state)
-4. Re-onboard your channels
-
-### Bot responds in channel instead of thread
-
-This is expected behavior in v0. The bot replies in-thread to keep conversations organized.
+```
+src/benedict/
+  main.py                 # Composition root
+  slack_app.py            # Slack Bolt handlers
+  agent.py                # Commands and conversation loop
+  architect/              # Cross-project architect prompts
+  commands/               # Command classifier and LLM tools
+  conversation_repository/
+  indexers/               # Slack history indexer
+  llm/                    # Claude + mock
+  metadata/               # .metadata.benedict generate/read
+  method/                 # .benedict.method.yaml read/write
+  models/                 # Conversation models
+  protocols/              # Interfaces and factories
+  repo_change_detector/   # GitChangeDetector
+  repo_reader/            # Local and workspace readers
+  semantic_indexer/       # ChromaDB indexer
+  utils/                  # Context builder and Slack formatting
+  workspace/              # Per-channel workspaces
+docs/                     # Setup and design notes
+plans/                    # Architecture and milestone docs
+tests/unit/               # Unit tests
+```
 
 ## Development
 
-### Makefile Commands
-
-The project includes a Makefile for common tasks:
-
 ```bash
-make help      # Show all available commands
-make sync      # Sync dependencies with uv (recommended)
-make install   # Install dependencies with uv
-make deps      # Check if dependencies are installed
-make run       # Run the bot
-make clean     # Remove cache files
-make lint      # Run linters (if installed)
-make format    # Format code (if black is installed)
+make help       # List targets
+make sync-dev   # Install runtime + dev dependencies
+make test       # pytest
+make format     # black + ruff
+make check      # format + test
+make run        # Start the bot
 ```
 
-### Running in Development
+The composition root is `src/benedict/main.py`. Concrete classes are wired there and injected into `RepoAgent`. Optional pieces (LLM, indexer, Slack history) log a warning and continue if they fail to start.
 
-```bash
-# Activate virtual environment (uv creates .venv by default)
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+## Troubleshooting
 
-# Run with debug logging
-make run
-# or
-python -m benedict.main
-# or (after installation)
-benedict
-```
+**Bot does not respond.** Confirm the process is running, the bot is in the channel, and you @mentioned it (or replied in a thread Benedict already joined). Check the terminal log.
 
-### Project Structure
+**Missing `SLACK_BOT_TOKEN` or `SLACK_APP_TOKEN`.** See [docs/SLACK_SETUP.md](docs/SLACK_SETUP.md).
 
-- **State Management** (`load_state`, `save_state`, `get_channel_repo`, `set_channel_repo`)
-  - Handles JSON persistence
-  - Thread-safe for single-process use
+**Channel is not onboarded.** Run `@benedict onboard repo org/repo` against a directory that exists locally.
 
-- **Command Detection** (`is_onboard_command`, `is_status_command`, `extract_repo_name`)
-  - Simple pattern matching
-  - Flexible parsing for natural language
+**Repository not found.** Set `BENEDICT_REPO_SOURCE_DIRS` to the parent of your checkouts, or pass an absolute path in the onboard command.
 
-- **Event Handlers** (`handle_app_mention`, `handle_onboard`, `handle_status`, `handle_conversation`)
-  - Routes @mentions to appropriate handlers
-  - Always replies in thread
+**LLM answers are stubs.** Set `ANTHROPIC_API_KEY`. Without it, Benedict acknowledges the repo but does not call Claude.
+
+**GitHub tool fails.** Install `gh` on the host and run `gh auth login`. Benedict does not ship a GitHub token of its own.
+
+**Corrupt state.** Stop the bot, delete `state.json`, restart, and re-onboard channels. Conversations in that file are lost.
 
 ## Roadmap
 
-### Current Features ✅
-- Slack connection via Socket Mode
-- Channel → Repo mapping
-- Onboard & status commands
-- LLM integration (Claude 3.5 Sonnet)
-- Semantic code search (ChromaDB + sentence-transformers)
-- Conversation history tracking
-- Local repository access
+Shipped beyond the original v0/M1 plan: semantic search, workspaces, method files, metadata, architect channel, Slack history indexing, and GitHub CLI during chat.
 
-### Next (M2)
-- GitHub API: read repo files remotely
-- Enhanced code understanding
+Still open:
 
-### v2 (Future)
-- Notion integration
-- Google Docs access
-- Cursor session logs
-- Multi-repo context
+- Remote GitHub `RepoReader` (original M2) so onboarding does not require a local checkout
+- External knowledge sources (Notion, Google Docs)
+- Stronger test coverage for `agent.py` and command routing
+- Open-source packaging (LICENSE, CI, SECURITY.md). See [docs/OPEN_SOURCE_GUIDE_INDEX.md](docs/OPEN_SOURCE_GUIDE_INDEX.md).
 
-### v3 (Advanced)
-- Agent-to-agent communication
-- RAG/vector search over codebase
-- Proactive suggestions
-- Code review automation
+## Documentation
 
-## Contributing
-
-This is a proof-of-concept. Contributions welcome!
+| Doc | Use it for |
+| --- | --- |
+| [docs/SLACK_SETUP.md](docs/SLACK_SETUP.md) | Slack app configuration |
+| [docs/CODE_READING_GUIDE.md](docs/CODE_READING_GUIDE.md) | How to read the codebase |
+| [plans/ARCHITECTURE.md](plans/ARCHITECTURE.md) | Current architecture overview |
+| [plans/MILESTONE_STATUS.md](plans/MILESTONE_STATUS.md) | Milestone tracker (some items are stale; trust this README and CHANGELOG first) |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ## License
 
-MIT License - feel free to use and modify.
-
-## Support
-
-For issues or questions:
-1. Check the Troubleshooting section above
-2. Review Slack app configuration
-3. Check terminal logs for error messages
-4. Verify `.env` file is correctly formatted
-
-## Architecture
-
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for current architecture overview.
-
-See [`plans/slack-agent-architecture.md`](plans/slack-agent-architecture.md) for detailed architecture documentation.
-
+MIT License. A `LICENSE` file is not yet in the repository.
