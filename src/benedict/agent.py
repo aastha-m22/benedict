@@ -26,8 +26,11 @@ from benedict.workspace import WorkspaceManager, ActionLogger
 from benedict.metadata import MetadataGenerator
 from benedict.commands import (
     LLMCommandClassifier,
+    ToolRegistry,
     create_tool_registry,
 )
+from benedict.commands.github_tools import RunGithubTool
+from benedict.commands.tool_loop import run_tool_loop
 
 logger = logging.getLogger(__name__)
 
@@ -655,6 +658,9 @@ class RepoAgent:
             capabilities.append(
                 "- **Read and create .metadata.benedict files** that summarize directory contents"
             )
+            capabilities.append(
+                "- **Run GitHub CLI (`gh`)** in this repository via the `run_github` tool"
+            )
         capabilities.append(
             "- **Access conversation history** - I can read and summarize past conversations in this channel"
         )
@@ -679,9 +685,16 @@ class RepoAgent:
             f"- You can reference specific files, functions, and code patterns from the context.\n"
             f"- If asked about conversations, summarize them, extract key topics, decisions, and action items.\n"
             f"- If asked about your capabilities, explain that you have access to repository files, semantic search, "
-            f"workspace metadata, and conversation history through the Benedict agent system.\n"
+            f"workspace metadata, conversation history, and GitHub via `run_github`.\n"
             f"- Be confident about your access - you are not a generic LLM without repository access, "
-            f"but rather an agent with integrated repository reading capabilities.\n\n"
+            f"but rather an agent with integrated repository reading capabilities.\n"
+            f"- **GitHub (`run_github`)**: To inspect PRs, issues, checks, or other GitHub data, call "
+            f"`run_github` with argv only (do not include `gh`). Example: "
+            f"`argv=[\"pr\", \"list\", \"--json\", \"title,url,author\"]`. Prefer `--json` so you can parse "
+            f"results. This is not a general shell — only `gh` runs. Ask the user before mutating GitHub "
+            f"(create, merge, close, comment). Never print tokens or secrets. If `gh` is missing or not "
+            f"authenticated, explain that the host running Benedict must install GitHub CLI and run "
+            f"`gh auth login`.\n\n"
             f"## Response Formatting (Slack-compatible)\n\n"
             f"- Format your responses using Slack mrkdwn format:\n"
             f"  - Use `*bold*` for emphasis and headings (not `**bold**`)\n"
@@ -698,15 +711,31 @@ class RepoAgent:
         # Get conversation history for LLM (includes current user message)
         history_messages = conversation.get_message_history(max_messages=10)
 
-        # Generate response with conversation history
+        # Generate response with conversation history.
+        # GitHub is a conversation tool (interpret output), not a classifier command.
         try:
-            response = self.llm.generate(
-                messages=history_messages,
-                system=system,
-                max_tokens=2000,
-            )
+            github_registry = ToolRegistry()
+            tool_context: Dict[str, Any] = {}
+            if workspace_path:
+                github_registry.register(RunGithubTool())
+                tool_context["workspace_path"] = str(workspace_path / repo)
 
-            response_text = response if isinstance(response, str) else str(response)
+            if github_registry.list_tools():
+                response_text = run_tool_loop(
+                    llm=self.llm,
+                    messages=history_messages,
+                    system=system,
+                    tool_registry=github_registry,
+                    context=tool_context,
+                )
+            else:
+                response = self.llm.generate(
+                    messages=history_messages,
+                    system=system,
+                    max_tokens=2000,
+                )
+                response_text = response if isinstance(response, str) else str(response)
+
             conversation.add_message("assistant", response_text)
             self.conversation_manager.save_conversation(conversation)
             return (True, response_text)

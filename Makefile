@@ -61,9 +61,10 @@ run:
 	fi
 	python3 -m benedict.main
 
-test:
+# Run tests
+test: check-uv
 	@echo "Running tests..."
-	python3 -m pytest tests/
+	uv run pytest tests/
 
 ruff:
 	@echo "Formatting code..."
