@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.20] - 2026-08-17
+
+### Changed
+- **README**: Rewrote the project README to match the current system. It now describes workspaces, method and metadata files, architect channel, semantic indexing, GitHub CLI, configuration, and the real command surface. Removed stale v0 stub checklists, broken root doc links, and the claim that GitHub API integration was the next unstarted milestone without mentioning what already shipped.
+
+### Fixed
+- Package `__version__` in `src/benedict/__init__.py` now matches `pyproject.toml`.
+
 ## [0.3.19] - 2026-08-17
 
 ### Added

@@ -4,4 +4,4 @@ A Slack bot that links channels to repositories and provides intelligent,
 repo-scoped AI agent conversations.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.20"
