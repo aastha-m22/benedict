@@ -256,20 +256,6 @@ def create_slack_app(agent: RepoAgent) -> App:
                 success, message = agent.handle_update_index(channel_id, user_id, text_clean)
                 format_and_send_message(say, message, thread_ts, message_type="command")
 
-            elif agent.is_create_method_command(text_clean):
-                repo = agent.get_channel_repo(channel_id)
-                if not repo:
-                    success, message = (
-                        False,
-                        "⚠️ Not Onboarded\n\n"
-                        "This channel hasn't been onboarded yet.\n\n"
-                        "*Next steps:*\n"
-                        "• Use `@agent onboard repo your-org/your-repo` to get started",
-                    )
-                else:
-                    success, message = agent.handle_create_method(channel_id, repo)
-                format_and_send_message(say, message, thread_ts, message_type="command")
-
             else:
                 success, message = agent.handle_conversation(channel_id, text_clean, thread_ts)
                 if not success and "⚠️" in message:

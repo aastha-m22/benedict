@@ -1,0 +1,57 @@
+content_type: code
+summary: Code directory with 4 files and 1 subdirectories
+purpose: 'Source code directory: utils'
+files:
+- name: .metadata.benedict
+  content_type: code
+  purpose: Code file
+  key_functions: []
+  key_classes: []
+- name: __init__.py
+  content_type: code
+  purpose: Utility functions.
+  key_functions: []
+  key_classes: []
+- name: context.py
+  content_type: code
+  purpose: Context Builder
+  key_functions:
+  - build_context
+  - extract_keywords
+  - find_relevant_files
+  - truncate_file_content
+  - _extract_file_request
+  - truncate_to_tokens
+  - build_architect_context
+  key_classes: []
+- name: slack_formatter.py
+  content_type: code
+  purpose: Slack Message Formatting Utilities
+  key_functions:
+  - markdown_to_mrkdwn
+  - extract_code_blocks
+  - extract_mermaid_blocks
+  - render_mermaid_to_image_url
+  - should_use_block_kit
+  - _find_code_block_ranges
+  - _is_inside_code_block
+  - _truncate_code_aware
+  - split_message
+  - create_section
+  - create_divider
+  - create_header
+  - create_code_block
+  - create_context
+  - create_image_block
+  - format_message
+  - format_status_message
+  - format_error_message
+  - replace_code_block
+  - replace_inline_code
+  key_classes:
+  - SlackFormatter
+  - BlockKitFormatter
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code

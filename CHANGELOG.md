@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-17
+
+### Removed
+- **Method subsystem**: Removed `.benedict.method.yaml` reading, writing, Slack create-method command, classifier method tools, prompt rhetoric, and onboard auto-create. The YAML file was not consumed as methodology (rules were never enforced), and the surrounding machinery duplicated create/read/update paths. Metadata tools and repo Q&A are unchanged.
+
 ## [0.3.17] - 2026-04-28
 
 ### Removed

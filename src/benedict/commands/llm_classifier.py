@@ -106,17 +106,10 @@ class LLMCommandClassifier:
         # Add instruction with explicit examples - be very direct
         prompt_parts.append(
             "You MUST call tools when the user requests specific operations. Do NOT try to answer from context.\n\n"
-            "IMPORTANT: The method file (.benedict.method.yaml) is the SECOND MOST VALUABLE file (after state.json). "
-            "It contains project phase, concerns, and methodology rules. ALWAYS prioritize reading it.\n\n"
             "MANDATORY tool calls:\n"
-            "- User says 'read the method file' or 'show method file' or 'what's in the method file' or 'can you read the method file' or 'read method' or asks about project state/phases/concerns → CALL get_method_state tool (no arguments needed)\n"
-            "- User says 'update phase' or 'set phase to X' → CALL update_pc tool\n"
-            "- User says 'update concern' or 'set X to Y' → CALL update_concern tool\n"
             "- User says 'get file metadata' or 'show metadata for file' → CALL get_file_metadata tool\n"
             "- User says 'list files' → CALL list_key_files tool\n"
             "- User says 'get repository summary' → CALL get_repository_summary tool\n\n"
-            "IMPORTANT: If the user asks to read/show/see the method file, you MUST call get_method_state tool. "
-            "Do NOT answer from memory or try to use semantic search - use the tool.\n\n"
             "Only skip tool calls if the input is a general question that doesn't request a specific operation."
         )
         

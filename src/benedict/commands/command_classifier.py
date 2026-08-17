@@ -152,72 +152,9 @@ class CommandClassifier:
                 file_path = file_path.rstrip('.,!?;:')
                 params["file_path"] = file_path
         
-        elif cmd_def.command_type == CommandType.UPDATE_METHOD:
-            # Try to extract phase, concern, state, etc.
-            if groups:
-                if len(groups) >= 1:
-                    # Check if it's "set X to Y" pattern
-                    if "set" in text_original.lower():
-                        if len(groups) >= 2:
-                            params["target"] = groups[0].strip()
-                            params["value"] = groups[1].strip()
-                    else:
-                        params["phase"] = groups[0].strip()
-        
         elif cmd_def.command_type == CommandType.LIST_FILES:
             if groups:
                 params["path"] = groups[0].strip()
-        
-        # Additional parameter extraction from text
-        params.update(self._extract_additional_params(cmd_def, text_original))
-        
-        return params
-    
-    def _extract_additional_params(
-        self, 
-        cmd_def: CommandDefinition, 
-        text: str
-    ) -> Dict[str, Any]:
-        """Extract additional parameters using heuristics.
-        
-        Args:
-            cmd_def: Command definition
-            text: Original text
-            
-        Returns:
-            Dictionary of additional parameters
-        """
-        params = {}
-        text_lower = text.lower()
-        
-        # Extract phase names
-        phases = ["conception", "design", "sprint", "review"]
-        for phase in phases:
-            if phase in text_lower:
-                params["phase"] = phase
-                break
-        
-        # Extract concern names
-        concerns = ["scope", "documentation", "development", "communication", "operations", "feedback"]
-        for concern in concerns:
-            if concern in text_lower:
-                params["concern"] = concern
-                break
-        
-        # Extract state values
-        states = ["complete", "active", "pending", "resolved", "locked", "in_progress"]
-        for state in states:
-            if state in text_lower:
-                params["state"] = state
-                break
-        
-        # Extract numbers (for iteration)
-        numbers = re.findall(r'\b(\d+)\b', text)
-        if numbers:
-            try:
-                params["iteration"] = int(numbers[0])
-            except ValueError:
-                pass
         
         return params
     
@@ -242,11 +179,6 @@ class CommandClassifier:
         # Boost confidence if exact command name is present
         if cmd_def.name.lower() in text_lower:
             confidence += 0.2
-        
-        # Boost confidence if command-specific keywords are present
-        if cmd_def.command_type == CommandType.UPDATE_METHOD:
-            if any(word in text_lower for word in ["update", "change", "set", "modify"]):
-                confidence += 0.1
         
         # Reduce confidence if it's too generic
         if len(text_lower.split()) < 2:

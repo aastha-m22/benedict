@@ -1,0 +1,79 @@
+content_type: code
+summary: Code directory with 8 files and 1 subdirectories
+purpose: 'Source code directory: protocols'
+files:
+- name: .metadata.benedict
+  content_type: code
+  purpose: Code file
+  key_functions: []
+  key_classes: []
+- name: __init__.py
+  content_type: code
+  purpose: Protocol definitions (interfaces).
+  key_functions: []
+  key_classes: []
+- name: conversation_history_indexer.py
+  content_type: code
+  purpose: Conversation History Indexer Protocol
+  key_functions:
+  - create_conversation_history_indexer
+  - read_conversations
+  - index_conversations
+  - update_index
+  - get_conversation_reader
+  key_classes:
+  - ConversationReader
+  - ConversationHistoryIndexer
+- name: conversation_repository.py
+  content_type: code
+  purpose: Conversation Repository Protocol
+  key_functions:
+  - create_conversation_repository
+  - find_by_thread_ts
+  - find_all
+  - save
+  key_classes:
+  - ConversationRepository
+- name: llm.py
+  content_type: code
+  purpose: LLM Protocol Definition
+  key_functions:
+  - create_llm
+  - generate
+  key_classes:
+  - LLM
+- name: repo_change_detector.py
+  content_type: code
+  purpose: Repository Change Detector Protocol
+  key_functions:
+  - create_repo_change_detector
+  - detect_changes
+  - get_last_commit_time
+  - supports_git
+  key_classes:
+  - RepoChangeDetector
+- name: repo_reader.py
+  content_type: code
+  purpose: RepoReader Protocol Definition
+  key_functions:
+  - create_repo_reader
+  - read_file
+  - list_files
+  - file_exists
+  key_classes:
+  - RepoReader
+- name: semantic_indexer.py
+  content_type: code
+  purpose: Semantic Indexer Protocol
+  key_functions:
+  - create_semantic_indexer
+  - index_repository
+  - update_index
+  - search
+  - is_indexed
+  key_classes:
+  - SemanticIndexer
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code

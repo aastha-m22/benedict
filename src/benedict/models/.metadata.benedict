@@ -1,0 +1,40 @@
+content_type: code
+summary: Code directory with 3 files and 1 subdirectories
+purpose: 'Source code directory: models'
+files:
+- name: .metadata.benedict
+  content_type: code
+  purpose: Code file
+  key_functions: []
+  key_classes: []
+- name: __init__.py
+  content_type: code
+  purpose: Domain models.
+  key_functions: []
+  key_classes: []
+- name: conversation.py
+  content_type: code
+  purpose: Conversation Model
+  key_functions:
+  - to_dict
+  - to_json
+  - from_json
+  - from_dict
+  - add_message
+  - get_messages
+  - get_message_history
+  - to_dict
+  - to_json
+  - from_json
+  - from_dict
+  - __init__
+  - get_conversation
+  - save_conversation
+  key_classes:
+  - Message
+  - Conversation
+  - ConversationManager
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code

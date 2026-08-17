@@ -61,11 +61,9 @@ run:
 	fi
 	python3 -m benedict.main
 
-# Run tests (placeholder - add tests later)
 test:
 	@echo "Running tests..."
-	@echo "⚠️  No tests configured yet"
-	@# python3 -m pytest tests/
+	python3 -m pytest tests/
 
 ruff:
 	@echo "Formatting code..."

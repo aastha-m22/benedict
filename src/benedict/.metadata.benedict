@@ -1,0 +1,121 @@
+content_type: code
+summary: Code directory with 5 files and 16 subdirectories
+purpose: 'Source code directory: benedict'
+files:
+- name: .metadata.benedict
+  content_type: code
+  purpose: Code file
+  key_functions: []
+  key_classes: []
+- name: __init__.py
+  content_type: code
+  purpose: Benedict - Slack Repo Agent
+  key_functions: []
+  key_classes: []
+- name: agent.py
+  content_type: code
+  purpose: Repository Agent
+  key_functions:
+  - __init__
+  - load_state
+  - save_state
+  - get_channel_repo
+  - set_channel_repo
+  - remove_channel_repo
+  - get_architect_channel
+  - set_architect_channel
+  - handle_onboard
+  - handle_offboard
+  - handle_status
+  - is_method_update_request
+  - is_explicit_update_confirmation
+  - handle_method_update
+  - _parse_method_updates
+  - _format_method_changes
+  - _apply_method_updates
+  - _get_method_guidance_message
+  - is_create_method_command
+  - _is_directory_empty
+  - _create_default_method_data
+  - handle_create_method
+  - handle_conversation
+  - handle_architect_query
+  - handle_update_index
+  - is_onboard_command
+  - is_offboard_command
+  - is_architect_onboard_command
+  - handle_onboard_architect
+  - is_status_command
+  - index_new_slack_messages
+  - is_update_index_command
+  - is_message_directed_at_bot
+  - extract_repo_name
+  key_classes:
+  - RepoAgent
+- name: main.py
+  content_type: code
+  purpose: Slack Repo Agent - Main Entry Point
+  key_functions:
+  - _find_repo_root
+  - _get_data_dir
+  - _get_env_file
+  - main
+  key_classes: []
+- name: slack_app.py
+  content_type: code
+  purpose: Slack App Setup
+  key_functions:
+  - format_and_send_message
+  - create_slack_app
+  - handle_app_mention
+  - handle_message
+  key_classes: []
+subdirectories:
+- name: __pycache__
+  summary: Contains 0 Python files
+  content_type: code
+- name: architect
+  summary: Contains 2 Python files
+  content_type: code
+- name: commands
+  summary: Contains 10 Python files
+  content_type: code
+- name: conversation_repository
+  summary: Contains 3 Python files
+  content_type: code
+- name: indexers
+  summary: Contains 2 Python files
+  content_type: code
+- name: lib
+  summary: Contains 3 Python files
+  content_type: code
+- name: llm
+  summary: Contains 3 Python files
+  content_type: code
+- name: metadata
+  summary: Contains 4 Python files
+  content_type: code
+- name: method
+  summary: Contains 3 Python files
+  content_type: code
+- name: models
+  summary: Contains 2 Python files
+  content_type: code
+- name: protocols
+  summary: Contains 7 Python files
+  content_type: code
+- name: repo_change_detector
+  summary: Contains 2 Python files
+  content_type: code
+- name: repo_reader
+  summary: Contains 5 Python files
+  content_type: code
+- name: semantic_indexer
+  summary: Contains 3 Python files
+  content_type: code
+- name: utils
+  summary: Contains 3 Python files
+  content_type: code
+- name: workspace
+  summary: Contains 3 Python files
+  content_type: code

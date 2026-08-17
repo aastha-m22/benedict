@@ -89,9 +89,9 @@ class WorkspaceRepoReader:
                     rel_path = p.relative_to(full_path)
                     files.append(str(rel_path))
             
-            # Also include .benedict.method.yaml and .metadata.* files (dotfiles)
+            # Also include .metadata.* files (dotfiles)
             # These need explicit globbing since rglob("*") skips them
-            for pattern in [".benedict.method.yaml", ".metadata.*"]:
+            for pattern in [".metadata.*"]:
                 # Check root level
                 for p in full_path.glob(pattern):
                     if p.is_file():
