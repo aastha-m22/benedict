@@ -1,6 +1,6 @@
 [project]
 name = "benedict"
-version = "0.3.17"
+version = "0.3.19"
 description = "A Slack bot that links channels to repositories and provides intelligent, repo-scoped AI agent conversations"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,10 @@ packages = ["src/benedict"]
 [tool.black]
 line-length = 100
 target-version = ['py38']
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 [tool.pylint]
 max-line-length = 100

@@ -116,28 +116,38 @@ class ClaudeLLM:
 
             response = self.client.messages.create(**api_kwargs)
 
-            # Check if response contains tool use
+            # Check if response contains tool use (may follow a text block)
             if response.content and len(response.content) > 0:
-                first_content = response.content[0]
+                tool_calls = []
+                assistant_content = []
+                for content_item in response.content:
+                    item_type = getattr(content_item, "type", None)
+                    if item_type == "tool_use":
+                        tool_call = {
+                            "id": content_item.id,
+                            "name": content_item.name,
+                            "input": content_item.input,
+                        }
+                        tool_calls.append(tool_call)
+                        assistant_content.append(
+                            {
+                                "type": "tool_use",
+                                "id": content_item.id,
+                                "name": content_item.name,
+                                "input": content_item.input,
+                            }
+                        )
+                    elif item_type == "text":
+                        assistant_content.append({"type": "text", "text": content_item.text})
 
-                if hasattr(first_content, "type") and first_content.type == "tool_use":
-                    # LLM wants to use tools - extract all tool calls
-                    tool_calls = []
-                    for content_item in response.content:
-                        if hasattr(content_item, "type") and content_item.type == "tool_use":
-                            tool_calls.append(
-                                {
-                                    "id": content_item.id,
-                                    "name": content_item.name,
-                                    "input": content_item.input,
-                                }
-                            )
-                    return {"tool_calls": tool_calls}
-                else:
-                    # Regular text response
-                    return (
-                        first_content.text if hasattr(first_content, "text") else str(first_content)
-                    )
+                if tool_calls:
+                    return {
+                        "tool_calls": tool_calls,
+                        "assistant_content": assistant_content,
+                    }
+
+                first_content = response.content[0]
+                return first_content.text if hasattr(first_content, "text") else str(first_content)
             else:
                 return ""
 
