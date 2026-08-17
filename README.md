@@ -31,11 +31,17 @@ This bot provides:
    ```
    Shows which repository the channel is linked to.
 
-3. **Ask questions**
+3. **Update the semantic index**
+   ```
+   @benedict update index
+   ```
+   Rebuilds the search index for the linked repository. Add `force` for a full reindex.
+
+4. **Ask questions**
    ```
    @benedict what's the architecture?
    ```
-   The bot uses semantic search and LLM to provide intelligent answers.
+   The bot uses semantic search and LLM to provide intelligent answers. There is no method-file command; `.benedict.method.yaml` is not a runtime feature.
 
 ## Prerequisites
 

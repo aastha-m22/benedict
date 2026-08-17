@@ -60,6 +60,8 @@ python -m benedict.main
 - **`metadata/metadata_reader.py`** - Reads METADATA files
 - **`metadata/content_handlers.py`** - Content-specific handlers for metadata generation
 
+Benedict does not have a method-file subsystem. A `.benedict.method.yaml` in a repository is an ordinary file, not a runtime feature.
+
 ### Utilities
 - **`utils/context.py`** - Context building functions (uses semantic search when available)
 
@@ -142,6 +144,7 @@ Environment variables:
 ## Commands
 
 - `@agent onboard repo <repo>` - Link channel to repository
+- `@agent offboard` - Unlink the channel from its repository
 - `@agent status` - Show channel status and repository info
 - `@agent update index` - Update semantic index (incremental)
 - `@agent update index force` - Force full reindex
