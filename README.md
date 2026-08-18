@@ -6,7 +6,7 @@ Use Benedict when a Slack channel is the working surface for a codebase and you 
 
 ## Current status
 
-Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.4.0). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.0). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
 **In production use today:**
 
@@ -19,6 +19,7 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.4.0). It is
 - Architect channel for cross-project questions
 - Slack conversation history indexing into the workspace
 - GitHub CLI (`gh`) during conversations, when `gh` is installed and authenticated on the host
+- MCP server (`benedict-mcp`) so Cursor and Claude Code can query onboarded projects
 
 **Not implemented:** GitHub API as a `RepoReader`, Notion, Google Docs, Cursor session logs, and a background git/file watcher process. Changelog entries for a watcher describe work that is no longer in the tree. `GitChangeDetector` remains and is used for incremental indexing.
 
@@ -172,6 +173,16 @@ python -m benedict.main
 ```
 
 You should see: `Bot is running! Press Ctrl+C to stop.`
+
+### MCP server (Cursor / Claude Code)
+
+After a channel is onboarded, the same data can be queried from an IDE without Slack running:
+
+```bash
+benedict-mcp
+```
+
+Or `make mcp` / `python -m benedict.mcp`. Setup is in [docs/MCP.md](docs/MCP.md). Point `BENEDICT_DATA_DIR` at the directory the Slack bot uses.
 
 ## Usage
 

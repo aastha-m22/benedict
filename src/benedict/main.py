@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from benedict.agent import RepoAgent
+from benedict.paths import get_data_dir, get_env_file
 from benedict.protocols import (
     create_llm,
     create_repo_reader,
@@ -28,58 +29,9 @@ setup_logging()
 logger = get_logger(__name__)
 
 
-def _find_repo_root() -> Path:
-    """Find repository root by looking for common markers (.git, pyproject.toml, etc.).
-
-    Returns:
-        Path to repository root, or current working directory if not found
-    """
-    # Start from the directory containing this file
-    current = Path(__file__).parent
-
-    # Walk up the directory tree looking for repo markers
-    for parent in [current] + list(current.parents):
-        if any(
-            (parent / marker).exists() for marker in [".git", "pyproject.toml", "setup.py", ".env"]
-        ):
-            return parent
-
-    # Fallback to current working directory
-    return Path.cwd()
-
-
-def _get_data_dir() -> Path:
-    """Get data directory from environment or use default.
-
-    Returns:
-        Path to data directory
-    """
-    data_dir = os.environ.get("BENEDICT_DATA_DIR")
-    if data_dir:
-        return Path(data_dir).resolve()
-
-    # Default: use repo root
-    return _find_repo_root()
-
-
-def _get_env_file() -> Path:
-    """Get .env file path from environment or use default.
-
-    Returns:
-        Path to .env file
-    """
-    env_file = os.environ.get("BENEDICT_ENV_FILE")
-    if env_file:
-        return Path(env_file).resolve()
-
-    # Default: look for .env in repo root
-    repo_root = _find_repo_root()
-    return repo_root / ".env"
-
-
 # Load environment variables from .env file only if not already set
 # This respects existing environment variables and falls back to .env file
-_env_path = _get_env_file()
+_env_path = get_env_file()
 if not os.environ.get("SLACK_BOT_TOKEN") or not os.environ.get("SLACK_APP_TOKEN"):
     if _env_path.exists():
         logger.info(f"Loading .env from: {_env_path}")
@@ -132,7 +84,7 @@ def main():
         logger.info("Running without repository access")
 
     # Get data directory (configurable via BENEDICT_DATA_DIR env var)
-    data_dir = _get_data_dir()
+    data_dir = get_data_dir()
     logger.info(f"Using data directory: {data_dir}")
 
     # Create workspace manager
@@ -210,7 +162,7 @@ def main():
     handler = SocketModeHandler(slack_app, app_token)
     logger.info("✅ Bot is running! Press Ctrl+C to stop.")
     logger.info("Waiting for events...")
-    
+
     try:
         handler.start()
     except KeyboardInterrupt:
