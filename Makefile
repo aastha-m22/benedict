@@ -18,9 +18,16 @@ help:
 	@echo "  make run         - Run the bot"
 	@echo ""
 	@echo "Development:"
-	@echo "  make test        - Run tests (if available)"
+	@echo "  make test        - Run all tests"
+	@echo "  make test-cov    - Run tests with coverage report"
+	@echo "  make test-unit   - Run unit tests only"
+	@echo "  make test-integration - Run integration tests only"
+	@echo "  make test-verbose - Run tests with verbose output"
+	@echo "  make test-coverage-html - Run tests and open HTML coverage report"
 	@echo "  make format      - Format code"
-	@echo "  make check       - Run all checks (format check + tests)"
+	@echo "  make lint        - Run linters"
+	@echo "  make type-check  - Run type checking"
+	@echo "  make check       - Run all checks (format + lint + type check + tests)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean       - Remove cache files and generated files"
@@ -64,24 +71,76 @@ run:
 # Run tests
 test: check-uv
 	@echo "Running tests..."
-	uv run pytest tests/
+	pytest
 
-ruff:
+# Run tests with coverage
+test-cov: check-uv
+	@echo "Running tests with coverage..."
+	pytest --cov=src/benedict --cov-report=term-missing --cov-report=html
+
+# Run unit tests only
+test-unit: check-uv
+	@echo "Running unit tests..."
+	pytest tests/unit/
+
+# Run integration tests only
+test-integration: check-uv
+	@echo "Running integration tests..."
+	pytest tests/integration/
+
+# Run tests in verbose mode
+test-verbose: check-uv
+	@echo "Running tests (verbose)..."
+	pytest -vv
+
+# Run tests and open coverage report
+test-coverage-html: test-cov
+	@echo "Opening coverage report..."
+	@if command -v open > /dev/null; then \
+		open htmlcov/index.html; \
+	elif command -v xdg-open > /dev/null; then \
+		xdg-open htmlcov/index.html; \
+	else \
+		echo "Coverage report generated at htmlcov/index.html"; \
+	fi
+
+# Linting
+lint: check-uv
+	@echo "Running linters..."
+	@command -v ruff > /dev/null 2>&1 && ruff check src tests || echo "⚠️  ruff not installed"
+	@command -v pylint > /dev/null 2>&1 && pylint src/benedict || echo "⚠️  pylint not installed"
+
+# Type checking
+type-check: check-uv
+	@echo "Running type checker..."
+	@command -v mypy > /dev/null 2>&1 && mypy src/benedict || echo "⚠️  mypy not installed"
+
+# Code formatting
+format: check-uv
 	@echo "Formatting code..."
-	ruff check src 2>/dev/null || ruff check src
+	@command -v black > /dev/null 2>&1 && black src tests || echo "⚠️  black not installed"
+	@command -v ruff > /dev/null 2>&1 && ruff check --fix src tests || echo "⚠️  ruff not installed"
 	@echo "✅ Code formatted"
 
-black:
-	@echo "Formatting code..."
-	black src tests 2>/dev/null || black src
-	@echo "✅ Code formatted"
+# Format check (don't modify files)
+format-check: check-uv
+	@echo "Checking code format..."
+	@command -v black > /dev/null 2>&1 && black --check src tests || echo "⚠️  black not installed"
 
-
-format: black ruff
-check: format test
+# Run all checks
+check: format-check lint type-check test-cov
+	@echo "✅ All checks passed!"
 clean:
 	@echo "Cleaning up..."
 	find . -type d -name "__pycache__" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name "*.egg-info" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name ".pytest_cache" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name ".mypy_cache" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name ".ruff_cache" -exec rm -r {} + 2>/dev/null || true
+	find . -type d -name "htmlcov" -exec rm -r {} + 2>/dev/null || true
+	find . -type f -name ".coverage" -exec rm {} + 2>/dev/null || true
+	find . -type f -name "coverage.xml" -exec rm {} + 2>/dev/null || true
+	@echo "✅ Cleanup complete"
 setup: venv
 	@echo "Setting up development environment..."
 

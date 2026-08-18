@@ -47,3 +47,14 @@ state.json
 Thumbs.db
 workspaces/
 *.benedictw
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+.hypothesis/
+.tox/
+coverage.xml
+*.coveragerc
