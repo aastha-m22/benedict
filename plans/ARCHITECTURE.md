@@ -108,16 +108,18 @@ main.py (entry point)
   - Conversation history indexing
 
 ### Context Building Flow
-1. User asks question in Slack thread
+1. User asks a question in a Slack thread
 2. `RepoAgent.handle_conversation()` is called
-3. Gets workspace path and creates ActionLogger
-4. Creates WorkspaceRepoReader adapter (if workspace available)
-5. Calls `build_context()` which:
+3. If the text is an explicit metadata-file request (e.g. "show metadata", "list files", "repository summary") and `.metadata.benedict` exists, a metadata-tool shortcut may run. GitHub issue/PR requests do not enter that shortcut. Tool failure falls through.
+4. Gets workspace path and creates ActionLogger
+5. Creates WorkspaceRepoReader adapter (if workspace available)
+6. Calls `build_context()` which:
    - Includes recent actions from action log
    - Includes repository metadata (if available)
    - Includes README.md
    - Uses semantic search (if available) or keyword matching
    - Reads relevant files via RepoReader
+7. Conversation-path LLM call may use `run_github`
 
 ### Semantic Indexing Flow
 1. On first query, repository is indexed if not already indexed
