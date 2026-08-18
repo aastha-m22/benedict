@@ -1,12 +1,12 @@
 # Benedict
 
-A Slack bot that links a channel to a local git repository and answers questions about that repo with Claude, semantic search, and project method/metadata files.
+A Slack bot that links a channel to a local git repository and answers questions about that repo with Claude, semantic search, and project metadata files.
 
-Use Benedict when a Slack channel is the working surface for a codebase and you want an agent that already knows the repo, the thread history, and the project's current phase.
+Use Benedict when a Slack channel is the working surface for a codebase and you want an agent that already knows the repo and the thread history.
 
 ## Current status
 
-Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.3.20). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.4.0). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
 **In production use today:**
 
@@ -15,7 +15,6 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.3.20). It i
 - Claude 3.5 Sonnet (override with `ANTHROPIC_MODEL`) plus a stub mode if the API key is missing
 - Semantic code search with ChromaDB and sentence-transformers; git-based incremental reindex
 - Per-channel workspaces (symlink or copy of the local repo)
-- `.benedict.method.yaml` for phase, concerns, and rules
 - `.metadata.benedict` directory summaries that boost search
 - Architect channel for cross-project questions
 - Slack conversation history indexing into the workspace
@@ -27,12 +26,12 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.3.20). It i
 
 1. You invite Benedict to a Slack channel and onboard a local repository.
 2. Benedict creates a workspace for that channel and indexes the repo on first use.
-3. A mention or a reply in an existing Benedict thread builds context (README, method file, metadata, semantic hits, recent actions) and asks Claude.
-4. Explicit commands (onboard, status, index, method file) skip the general Q&A path and run dedicated handlers.
+3. A mention or a reply in an existing Benedict thread builds context (README, metadata, semantic hits, recent actions) and asks Claude.
+4. Explicit commands (onboard, status, index) skip the general Q&A path and run dedicated handlers.
 
 ```
 Slack event → slack_app.py → RepoAgent
-  → workspace + semantic index + method/metadata context
+  → workspace + semantic index + metadata context
   → Claude (optional tools) → formatted Slack reply
 ```
 
@@ -46,11 +45,10 @@ Mention `@benedict` (or `@agent`) in the channel.
 | `offboard` | Removes the channel mapping. |
 | `status` | Shows the linked repo and when it was onboarded. |
 | `update index` | Incremental reindex. Add `force` for a full rebuild. |
-| `create method file` | Writes a default `.benedict.method.yaml` if one is missing. |
 | `onboard architect` | Marks the channel as the architect channel for cross-project questions. |
 | Any other question | Repo-scoped conversation with search and LLM. |
 
-Natural-language method updates (`update phase`, `show method file`) go through the LLM tool classifier when a workspace and LLM are available.
+There is no method-file command. A `.benedict.method.yaml` in a repository is an ordinary file, not a runtime feature.
 
 ### Onboard a channel
 
@@ -158,7 +156,6 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 | `BENEDICT_ENV_FILE` | `{repo}/.env` | dotenv path |
 | `BENEDICT_REPO_SOURCE_DIRS` | `~/Projects` | Comma-separated roots used during onboard |
 | `BENEDICT_CHUNK_SIZE` | `2000` | Index chunk size in characters |
-| `BENEDICT_METHOD_FILE` | `.benedict.method.yaml` | Override method file name/path |
 | `BENEDICT_METADATA_FILE` | `.metadata.benedict` | Override metadata file name/path |
 
 ## Run
@@ -182,8 +179,6 @@ You should see: `Bot is running! Press Ctrl+C to stop.`
 2. Onboard: `@benedict onboard repo acme/widget`
 3. Confirm: `@benedict status`
 4. Ask: `@benedict what's the architecture?`
-
-If the repo has no `.benedict.method.yaml`, Benedict will push you to create one. That file is the source of truth for phase, iteration, and concerns.
 
 ## State and workspaces
 
@@ -218,7 +213,6 @@ src/benedict/
   indexers/               # Slack history indexer
   llm/                    # Claude + mock
   metadata/               # .metadata.benedict generate/read
-  method/                 # .benedict.method.yaml read/write
   models/                 # Conversation models
   protocols/              # Interfaces and factories
   repo_change_detector/   # GitChangeDetector
@@ -262,7 +256,7 @@ The composition root is `src/benedict/main.py`. Concrete classes are wired there
 
 ## Roadmap
 
-Shipped beyond the original v0/M1 plan: semantic search, workspaces, method files, metadata, architect channel, Slack history indexing, and GitHub CLI during chat.
+Shipped beyond the original v0/M1 plan: semantic search, workspaces, metadata, architect channel, Slack history indexing, and GitHub CLI during chat.
 
 Still open:
 

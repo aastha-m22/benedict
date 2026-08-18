@@ -21,7 +21,6 @@ def build_context(
     workspace_path: Optional[Path] = None,
     metadata_reader=None,
     action_logger=None,
-    method_reader=None,
 ) -> str:
     """Build relevant context for question using semantic search.
 
@@ -34,7 +33,6 @@ def build_context(
         workspace_path: Optional workspace path for metadata and action log
         metadata_reader: Optional metadata reader for including metadata in context
         action_logger: Optional action logger for including recent actions
-        method_reader: Optional method reader for including method file information
 
     Returns:
         Formatted context string
@@ -71,41 +69,6 @@ def build_context(
                 parts.append(metadata_summary)
         except Exception as e:
             logger.warning(f"Error reading metadata: {e}")
-
-    # Include method file summary if available - THIS IS THE SECOND MOST VALUABLE FILE (after state.json)
-    if method_reader and workspace_path:
-        try:
-            repo_method_path = workspace_path / repo
-            method_summary = method_reader.get_method_summary(repo_method_path)
-            if method_summary:
-                method_data = method_reader.read_method(repo_method_path)
-                if method_data:
-                    method = method_data.get("method", {})
-                    pc = method.get("pc", {})
-                    concerns = method.get("concerns", {})
-                    
-                    method_context = f"# ⭐ Project Method File (SECOND MOST VALUABLE FILE): {repo}\n"
-                    method_context += f"**This file contains the project's current phase, concerns, and methodology rules.**\n\n"
-                    method_context += f"Current State: {method_summary}\n\n"
-                    
-                    # Include current phase details
-                    if pc:
-                        method_context += "## Program Counter\n"
-                        method_context += f"- Phase: {pc.get('phase', 'N/A')}\n"
-                        method_context += f"- Iteration: {pc.get('iteration', 'N/A')}\n"
-                        method_context += f"- Step: {pc.get('step', 'N/A')}\n\n"
-                    
-                    # Include current concerns
-                    if concerns:
-                        method_context += "## Current Concerns\n"
-                        for concern, state in concerns.items():
-                            method_context += f"- {concern}: {state}\n"
-                        method_context += "\n"
-                    
-                    # Prepend method context to ensure it's seen first
-                    parts.insert(0, method_context)
-        except Exception as e:
-            logger.warning(f"Error reading method file: {e}")
 
     # Check if user is asking for a specific file - read it directly
     requested_file = _extract_file_request(question)
@@ -275,11 +238,11 @@ def _extract_file_request(question: str) -> Optional[str]:
     """Extract specific file path from question if user is asking for a file.
     
     Detects patterns like:
-    - "tell me the contents of .benedict.method.yaml"
-    - "show me .benedict.method.yaml"
-    - "read .benedict.method.yaml"
-    - "what's in .benedict.method.yaml"
-    - "contents of .benedict.method.yaml"
+    - "tell me the contents of README.md"
+    - "show me src/agent.py"
+    - "read Makefile"
+    - "what's in pyproject.toml"
+    - "contents of docs/ARCHITECTURE.md"
     
     Args:
         question: User question

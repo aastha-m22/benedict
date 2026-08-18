@@ -693,9 +693,6 @@ class ChromaDBSemanticIndexer:
             # Check extension
             if any(file_path.lower().endswith(ext) for ext in code_extensions):
                 filtered.append(file_path)
-            # Explicitly include .benedict.method.yaml files (important project metadata)
-            elif file_path.endswith(".benedict.method.yaml"):
-                filtered.append(file_path)
             # Include files without extension that might be config files
             elif "/" not in file_path or file_path.split("/")[-1] in [
                 "Dockerfile",

@@ -1,5 +1,7 @@
 # Command Classifier API Design: Multi-Agent Support
 
+**Status (v0.4.0):** Method-file command examples in this document (`update_method`) are not part of the runtime. This document is historical API design.
+
 ## Overview
 
 **One-sentence summary:** A registry-based API that enables multiple agents/tools to each define their own command sets, with unified classification and context-aware routing.

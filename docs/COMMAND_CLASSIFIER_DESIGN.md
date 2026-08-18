@@ -1,5 +1,7 @@
 # Command Classifier: Technical Design Document
 
+**Status (v0.4.0):** Method-file commands described here (`read_method`, `update_method`, `create_method`) were removed. This document is historical design, not current behavior.
+
 ## Overview
 
 A general-purpose, intent-based command classification system that maps natural language input to structured command intents. This system enables applications to understand user commands without requiring exact keyword matching or rigid command syntax.

@@ -22,11 +22,6 @@ class CommandType(Enum):
     LIST_FILES = "list_files"
     SEARCH_FILES = "search_files"
     
-    # Method file operations
-    READ_METHOD = "read_method"
-    UPDATE_METHOD = "update_method"
-    CREATE_METHOD = "create_method"
-    
     # Metadata operations
     READ_METADATA = "read_metadata"
     GENERATE_METADATA = "generate_metadata"
@@ -131,7 +126,7 @@ COMMAND_DEFINITIONS: List[CommandDefinition] = [
         ],
         required_params=["file_path"],
         examples=[
-            "read .benedict.method.yaml",
+            "read README.md",
             "show me the contents of README.md",
             "what's in agent.py",
         ],
@@ -152,65 +147,6 @@ COMMAND_DEFINITIONS: List[CommandDefinition] = [
             "list files",
             "show files in src/",
             "what files are in the repo?",
-        ],
-    ),
-    
-    # Method file operations
-    CommandDefinition(
-        command_type=CommandType.READ_METHOD,
-        name="read_method",
-        description="Read the method file",
-        patterns=[
-            r"read\s+method",
-            r"show\s+method",
-            r"method\s+file",
-            r"what'?s?\s+in\s+the\s+method\s+file",
-            r"show\s+me\s+the\s+method",
-        ],
-        examples=[
-            "read method file",
-            "show me the method",
-            "what's in the method file?",
-        ],
-    ),
-    
-    CommandDefinition(
-        command_type=CommandType.UPDATE_METHOD,
-        name="update_method",
-        description="Update method file (phase, concerns, etc.)",
-        patterns=[
-            r"update\s+method",
-            r"change\s+method",
-            r"update\s+phase",
-            r"change\s+phase",
-            r"set\s+phase\s+to\s+([^\s]+)",
-            r"update\s+concern",
-            r"change\s+concern",
-            r"set\s+([^\s]+)\s+to\s+([^\s]+)",  # Generic set X to Y
-        ],
-        optional_params=["phase", "concern", "state", "iteration", "step"],
-        examples=[
-            "update phase to sprint",
-            "set documentation concern to complete",
-            "change method file",
-        ],
-    ),
-    
-    CommandDefinition(
-        command_type=CommandType.CREATE_METHOD,
-        name="create_method",
-        description="Create a new method file",
-        patterns=[
-            r"create\s+method",
-            r"generate\s+method",
-            r"setup\s+method",
-            r"initialize\s+method",
-            r"new\s+method\s+file",
-        ],
-        examples=[
-            "create method file",
-            "generate method",
-            "setup method file",
         ],
     ),
     
