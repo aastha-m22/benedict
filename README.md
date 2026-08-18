@@ -6,7 +6,7 @@ Use Benedict when a Slack channel is the working surface for a codebase and you 
 
 ## Current status
 
-Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.0). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.1). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
 **In production use today:**
 
@@ -47,7 +47,9 @@ Mention `@benedict` (or `@agent`) in the channel.
 | `status` | Shows the linked repo and when it was onboarded. |
 | `update index` | Incremental reindex. Add `force` for a full rebuild. |
 | `onboard architect` | Marks the channel as the architect channel for cross-project questions. |
-| Any other question | Repo-scoped conversation with search and LLM. |
+| Any other question | Repo-scoped conversation with search, LLM, and `run_github`. |
+
+GitHub issue/PR requests stay on that conversation path. Asking for `.metadata.benedict` contents (file metadata, list key files, repository summary) may use a short metadata-tool shortcut. That shortcut does not run GitHub; if it fails, Benedict falls through to conversation.
 
 There is no method-file command. A `.benedict.method.yaml` in a repository is an ordinary file, not a runtime feature.
 

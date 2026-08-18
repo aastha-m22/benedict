@@ -432,15 +432,19 @@ class RepoAgent:
         # Add user message to conversation
         conversation.add_message("user", text)
 
-        # Try LLM-based classification first (if available)
-        if self.llm and self.workspace_manager:
+        # Metadata classifier is a narrow shortcut. GitHub, code Q&A, and
+        # issue creation belong on the conversation path (run_github).
+        if self.llm and self.workspace_manager and self.is_metadata_command(text):
             try:
                 workspace_path = self.workspace_manager.get_workspace_path(channel_id)
                 repo_path = workspace_path / repo
                 
                 from benedict.metadata import MetadataReader
                 metadata_reader = MetadataReader()
-                tool_registry = create_tool_registry(metadata_reader=metadata_reader)
+                tool_registry = create_tool_registry(
+                    metadata_reader=metadata_reader,
+                    repo_path=repo_path,
+                )
 
                 if tool_registry.list_tools():
                     # Initialize LLM classifier with tool registry
@@ -491,13 +495,15 @@ class RepoAgent:
                                 message = f"```yaml\n{yaml.dump(data_results[0] if len(data_results) == 1 else data_results, default_flow_style=False)}\n```"
                             else:
                                 message = "✅ Operations completed successfully."
-                        else:
-                            errors = [r.error or "Unknown error" for r in results if not r.success]
-                            message = f"⚠️ Some operations failed:\n" + "\n".join(f"- {e}" for e in errors)
-                        
-                        conversation.add_message("assistant", message)
-                        self.conversation_manager.save_conversation(conversation)
-                        return (success_count == len(results), message)
+                            conversation.add_message("assistant", message)
+                            self.conversation_manager.save_conversation(conversation)
+                            return (True, message)
+
+                        errors = [r.error or "Unknown error" for r in results if not r.success]
+                        logger.warning(
+                            "Metadata tools failed (%s); falling through to conversation",
+                            errors,
+                        )
             except Exception as e:
                 logger.warning(f"LLM classification failed: {e}", exc_info=True)
                 # Fall through to regular LLM query
@@ -1034,6 +1040,26 @@ class RepoAgent:
         """Handle architect onboarding."""
         self.set_architect_channel(channel_id, user_id)
         return True, "✅ Architect channel onboarded!\n\nI can now answer cross-project questions."
+
+    @staticmethod
+    def is_metadata_command(text: str) -> bool:
+        """True only for explicit metadata-file operations.
+
+        GitHub issues, PRs, and general questions must not enter the
+        metadata classifier. That classifier has no run_github tool and
+        used to abort the conversation with "Metadata file not found".
+        """
+        text_lower = text.lower()
+        return any(
+            pattern in text_lower
+            for pattern in (
+                "metadata",
+                "list files",
+                "list key files",
+                "repository summary",
+                "repo summary",
+            )
+        )
 
     @staticmethod
     def is_status_command(text: str) -> bool:

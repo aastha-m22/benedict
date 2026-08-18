@@ -47,6 +47,12 @@ def test_tool_registry_registers_only_metadata_tools():
     assert "create_method" not in names
 
 
+def test_tool_registry_skips_tools_when_metadata_missing():
+    reader = SimpleNamespace(metadata_exists=lambda _path: False)
+    registry = create_tool_registry(metadata_reader=reader, repo_path=Path("/tmp"))
+    assert registry.list_tools() == []
+
+
 def test_create_tool_registry_from_method_data_is_gone():
     import benedict.commands as commands
 
