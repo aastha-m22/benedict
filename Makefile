@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync sync-dev run test clean format check deps venv setup recreate-env
+.PHONY: help install install-dev sync sync-dev run mcp test clean format check deps venv setup recreate-env
 
 # Default target
 help:
@@ -16,6 +16,7 @@ help:
 	@echo ""
 	@echo "Running:"
 	@echo "  make run         - Run the bot"
+	@echo "  make mcp         - Run the MCP server (stdio)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make test        - Run tests (if available)"
@@ -60,6 +61,11 @@ run:
 		echo "⚠️  Warning: .env file not found. Create one with SLACK_BOT_TOKEN and SLACK_APP_TOKEN"; \
 	fi
 	python3 -m benedict.main
+
+# Run the MCP server (stdio). Cursor/Claude Code launch this as a subprocess.
+mcp:
+	@echo "Starting Benedict MCP server on stdio..."
+	python3 -m benedict.mcp
 
 # Run tests
 test: check-uv

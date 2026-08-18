@@ -2,10 +2,21 @@
 
 ## Entry Point
 
-**`src/benedict/main.py`** is the application entry point. Run with:
+**`src/benedict/main.py`** is the Slack application entry point. Run with:
 ```bash
 python -m benedict.main
 ```
+
+**`src/benedict/mcp/server.py`** is the MCP server entry point (Cursor / Claude Code). Run with:
+```bash
+benedict-mcp
+```
+or:
+```bash
+python -m benedict.mcp
+```
+
+The MCP process does not start Slack. It reads the same `state.json`, workspaces, and index. See [docs/MCP.md](../docs/MCP.md).
 
 ## File Structure
 
@@ -13,6 +24,8 @@ python -m benedict.main
 - **`main.py`** - Composition root (wires all dependencies together)
 - **`slack_app.py`** - Slack Bolt app configuration and event handlers
 - **`agent.py`** - Main agent logic (handles commands and conversations)
+- **`paths.py`** - Shared data-dir and `.env` path helpers
+- **`mcp/`** - MCP server (project resolver, read-only service, stdio composition root)
 
 ### Domain Models
 - **`models/conversation.py`** - Conversation and Message models, ConversationManager

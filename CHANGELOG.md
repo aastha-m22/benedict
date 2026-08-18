@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-18
+
+### Added
+- **MCP server**: Cursor, Claude Code, and other MCP clients can query onboarded Benedict projects over stdio. Tools: `list_projects`, `get_repository_summary`, `search_code`, `get_recent_actions`, `ask_benedict`. Entry point: `benedict-mcp` / `python -m benedict.mcp`. See [docs/MCP.md](docs/MCP.md).
+
 ## [0.4.0] - 2026-08-18
 
 ### Removed

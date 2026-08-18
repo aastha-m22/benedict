@@ -6,7 +6,7 @@ Use Benedict when a Slack channel is the working surface for a codebase and you 
 
 ## Current status
 
-Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.4.0). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.0). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
 **In production use today:**
 
@@ -19,6 +19,7 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.4.0). It is
 - Architect channel for cross-project questions
 - Slack conversation history indexing into the workspace
 - GitHub CLI (`gh`) during conversations, when `gh` is installed and authenticated on the host
+- MCP server (`benedict-mcp`) so Cursor and Claude Code can query onboarded projects
 
 **Not implemented:** GitHub API as a `RepoReader`, Notion, Google Docs, Cursor session logs, and a background git/file watcher process. Changelog entries for a watcher describe work that is no longer in the tree. `GitChangeDetector` remains and is used for incremental indexing.
 
@@ -49,6 +50,10 @@ Mention `@benedict` (or `@agent`) in the channel.
 | Any other question | Repo-scoped conversation with search and LLM. |
 
 There is no method-file command. A `.benedict.method.yaml` in a repository is an ordinary file, not a runtime feature.
+
+### MCP (Cursor / Claude Code)
+
+This is not a Slack command. After a repo is onboarded, run `benedict-mcp` (or `make mcp`) so Cursor and Claude Code can call `list_projects`, `get_repository_summary`, `search_code`, `get_recent_actions`, and `ask_benedict`. Setup: [docs/MCP.md](docs/MCP.md). Use the same `BENEDICT_DATA_DIR` as the Slack bot.
 
 ### Onboard a channel
 
@@ -84,6 +89,7 @@ If GitHub CLI is installed and authenticated on the host, Benedict can run `gh` 
 - A Slack workspace where you can create apps
 - An Anthropic API key for LLM answers (`ANTHROPIC_API_KEY`)
 - Optional: [GitHub CLI](https://cli.github.com/) (`gh`) for GitHub tools
+- Optional: Cursor or Claude Code, to use the MCP server (`benedict-mcp`)
 - Optional: local git checkouts of the repos you want to onboard
 
 ## Slack app setup
@@ -146,9 +152,9 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 | --- | --- | --- |
 | `SLACK_BOT_TOKEN` | required | Slack bot token |
 | `SLACK_APP_TOKEN` | required | Slack Socket Mode token |
-| `ANTHROPIC_API_KEY` | optional | Claude. Without it, Benedict runs in stub mode. |
+| `ANTHROPIC_API_KEY` | optional | Claude. Without it, Slack runs in stub mode and MCP `ask_benedict` is unavailable. |
 | `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Claude model id |
-| `BENEDICT_DATA_DIR` | repo root | Root for state, workspaces, and ChromaDB |
+| `BENEDICT_DATA_DIR` | repo root | Root for state, workspaces, and ChromaDB. Slack bot and `benedict-mcp` must share this. |
 | `BENEDICT_WORKSPACES_DIR` | `{data_dir}/workspaces` | Per-channel workspaces |
 | `BENEDICT_WORKSPACE_COPY_MODE` | `symlink` | `symlink` or `copy` |
 | `BENEDICT_CHROMA_DB_DIR` | `{data_dir}/.chroma_db` | Vector index |
@@ -172,6 +178,16 @@ python -m benedict.main
 ```
 
 You should see: `Bot is running! Press Ctrl+C to stop.`
+
+### MCP server (Cursor / Claude Code)
+
+After a channel is onboarded, the same data can be queried from an IDE without Slack running:
+
+```bash
+benedict-mcp
+```
+
+Or `make mcp` / `python -m benedict.mcp`. Setup is in [docs/MCP.md](docs/MCP.md). Point `BENEDICT_DATA_DIR` at the directory the Slack bot uses.
 
 ## Usage
 
