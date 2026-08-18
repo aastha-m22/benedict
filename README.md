@@ -27,13 +27,15 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.1). It is
 
 1. You invite Benedict to a Slack channel and onboard a local repository.
 2. Benedict creates a workspace for that channel and indexes the repo on first use.
-3. A mention or a reply in an existing Benedict thread builds context (README, metadata, semantic hits, recent actions) and asks Claude.
-4. Explicit commands (onboard, status, index) skip the general Q&A path and run dedicated handlers.
+3. Explicit commands (onboard, status, index) skip the general Q&A path and run dedicated handlers.
+4. Other mentions go to `handle_conversation`. GitHub issue/PR requests use the conversation path and `run_github`. Only explicit `.metadata.benedict` requests (file metadata, list key files, repository summary) may use a short metadata-tool shortcut; if that shortcut fails, Benedict falls through to conversation.
+5. The conversation path builds context (README, metadata, semantic hits, recent actions) and asks Claude.
 
 ```
 Slack event → slack_app.py → RepoAgent
+  → metadata-tool shortcut (explicit metadata wording only) or fall through
   → workspace + semantic index + metadata context
-  → Claude (optional tools) → formatted Slack reply
+  → Claude (optional run_github) → formatted Slack reply
 ```
 
 ## Commands
