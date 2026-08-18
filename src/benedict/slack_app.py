@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import os
-from typing import Optional
+from typing import List, Optional, Tuple
 from slack_bolt import App
 from benedict.agent import RepoAgent
 from benedict.utils import SlackFormatter, BlockKitFormatter
@@ -16,6 +16,26 @@ logger = logging.getLogger(__name__)
 
 # Slack app will be initialized in create_slack_app() after .env is loaded
 app = None
+
+
+def parse_error_message(message: str) -> Tuple[str, str, Optional[List[str]]]:
+    """Split an agent error string into header, body, and optional next steps.
+
+    Accepts both `⚠️ Type\\n\\nbody` and `⚠️ Type:\\n- detail` so Slack does not
+    wrap the original warning in a second "Error" header.
+    """
+    error_match = re.match(r"⚠️\s*(.+?)\n+(.+)", message, re.DOTALL)
+    if not error_match:
+        return "Error", message, None
+
+    error_type = error_match.group(1).strip().rstrip(":")
+    error_msg = error_match.group(2).strip()
+    next_steps_match = re.search(r"Next steps?[:\n]+(.+)", error_msg, re.IGNORECASE)
+    next_steps = None
+    if next_steps_match:
+        steps_text = next_steps_match.group(1)
+        next_steps = [s.strip() for s in steps_text.split("\n") if s.strip()]
+    return error_type, error_msg, next_steps
 
 
 def format_and_send_message(
@@ -103,21 +123,8 @@ def format_and_send_message(
             formatted = BlockKitFormatter.format_message(message, use_block_kit=use_block_kit)
 
     elif message_type == "error":
-        # Error messages use Block Kit error format
-        # Extract error type and message
-        error_match = re.match(r"⚠️\s*(.+?)\n\n(.+)", message, re.DOTALL)
-        if error_match:
-            error_type = error_match.group(1).strip()
-            error_msg = error_match.group(2).strip()
-            # Extract next steps if present
-            next_steps_match = re.search(r"Next steps?[:\n]+(.+)", error_msg, re.IGNORECASE)
-            next_steps = None
-            if next_steps_match:
-                steps_text = next_steps_match.group(1)
-                next_steps = [s.strip() for s in steps_text.split("\n") if s.strip()]
-            formatted = BlockKitFormatter.format_error_message(error_type, error_msg, next_steps)
-        else:
-            formatted = BlockKitFormatter.format_error_message("Error", message)
+        error_type, error_msg, next_steps = parse_error_message(message)
+        formatted = BlockKitFormatter.format_error_message(error_type, error_msg, next_steps)
 
     elif message_type == "command":
         # Command responses (onboard, update-index) - use Block Kit for better structure

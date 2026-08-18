@@ -105,12 +105,12 @@ class LLMCommandClassifier:
         
         # Add instruction with explicit examples - be very direct
         prompt_parts.append(
-            "You MUST call tools when the user requests specific operations. Do NOT try to answer from context.\n\n"
-            "MANDATORY tool calls:\n"
-            "- User says 'get file metadata' or 'show metadata for file' → CALL get_file_metadata tool\n"
-            "- User says 'list files' → CALL list_key_files tool\n"
-            "- User says 'get repository summary' → CALL get_repository_summary tool\n\n"
-            "Only skip tool calls if the input is a general question that doesn't request a specific operation."
+            "These tools only read .metadata.benedict. Call a tool only for that exact operation.\n\n"
+            "- User asks for metadata of a named file → CALL get_file_metadata\n"
+            "- User asks to list files from metadata → CALL list_key_files\n"
+            "- User asks for the repository summary/purpose from metadata → CALL get_repository_summary\n\n"
+            "Do NOT call tools for GitHub issues, PRs, gh, code questions, or anything else. "
+            "If unsure, call no tools."
         )
         
         prompt_parts.append("")

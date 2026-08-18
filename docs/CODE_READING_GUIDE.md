@@ -313,10 +313,13 @@ except Exception as e:
 ```
 Slack Event → slack_app.py (event handler)
   → agent.py.handle_conversation()
+    → optional metadata classifier (explicit metadata-file wording only)
+       → success: return metadata YAML
+       → missing sidecar, no tools, or tool failure: fall through
     → build_context() (utils/context.py)
       → semantic_indexer.search() OR keyword matching
       → repo_reader.read_file()
-    → llm.generate() (with context)
+    → llm.generate() with run_github (conversation path)
     → Format response → Slack
 ```
 
