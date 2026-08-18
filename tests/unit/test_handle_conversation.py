@@ -1,8 +1,10 @@
 """Tests for conversation routing past the metadata classifier."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from benedict.agent import RepoAgent
+from benedict.commands.tool_registry_factory import create_tool_registry
 from benedict.conversation_repository.conversation_repository_mock import (
     MockConversationRepository,
 )
@@ -128,3 +130,9 @@ def test_failed_metadata_tools_fall_through_to_conversation(tmp_path):
     assert success is True
     assert "Some operations failed" not in message
     assert "[conversation]" in message
+
+
+def test_tool_registry_skips_tools_when_metadata_missing():
+    reader = SimpleNamespace(metadata_exists=lambda _path: False)
+    registry = create_tool_registry(metadata_reader=reader, repo_path=Path("/tmp"))
+    assert registry.list_tools() == []
