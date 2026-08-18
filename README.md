@@ -51,6 +51,10 @@ Mention `@benedict` (or `@agent`) in the channel.
 
 There is no method-file command. A `.benedict.method.yaml` in a repository is an ordinary file, not a runtime feature.
 
+### MCP (Cursor / Claude Code)
+
+This is not a Slack command. After a repo is onboarded, run `benedict-mcp` (or `make mcp`) so Cursor and Claude Code can call `list_projects`, `get_repository_summary`, `search_code`, `get_recent_actions`, and `ask_benedict`. Setup: [docs/MCP.md](docs/MCP.md). Use the same `BENEDICT_DATA_DIR` as the Slack bot.
+
 ### Onboard a channel
 
 ```
@@ -85,6 +89,7 @@ If GitHub CLI is installed and authenticated on the host, Benedict can run `gh` 
 - A Slack workspace where you can create apps
 - An Anthropic API key for LLM answers (`ANTHROPIC_API_KEY`)
 - Optional: [GitHub CLI](https://cli.github.com/) (`gh`) for GitHub tools
+- Optional: Cursor or Claude Code, to use the MCP server (`benedict-mcp`)
 - Optional: local git checkouts of the repos you want to onboard
 
 ## Slack app setup
@@ -147,9 +152,9 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 | --- | --- | --- |
 | `SLACK_BOT_TOKEN` | required | Slack bot token |
 | `SLACK_APP_TOKEN` | required | Slack Socket Mode token |
-| `ANTHROPIC_API_KEY` | optional | Claude. Without it, Benedict runs in stub mode. |
+| `ANTHROPIC_API_KEY` | optional | Claude. Without it, Slack runs in stub mode and MCP `ask_benedict` is unavailable. |
 | `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Claude model id |
-| `BENEDICT_DATA_DIR` | repo root | Root for state, workspaces, and ChromaDB |
+| `BENEDICT_DATA_DIR` | repo root | Root for state, workspaces, and ChromaDB. Slack bot and `benedict-mcp` must share this. |
 | `BENEDICT_WORKSPACES_DIR` | `{data_dir}/workspaces` | Per-channel workspaces |
 | `BENEDICT_WORKSPACE_COPY_MODE` | `symlink` | `symlink` or `copy` |
 | `BENEDICT_CHROMA_DB_DIR` | `{data_dir}/.chroma_db` | Vector index |
