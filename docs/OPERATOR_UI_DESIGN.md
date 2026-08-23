@@ -231,7 +231,7 @@ Guarantees:
 ## 8. Constraints & Assumptions
 
 - Local operator on the same machine as the bot. Bind `127.0.0.1` only.
-- Same process as the Slack bot for v1 (background asyncio/thread). MCP writes to the same `runs.jsonl` because it shares `BENEDICT_DATA_DIR`.
+- Same process as the Slack bot for v1 (background asyncio/thread). MCP writes to the same `runs.jsonl` because it shares `BENEDICT_DATA_DIR`. The Slack-side recorder reloads the file when its size or mtime changes so MCP runs appear in Activity without restarting the bot.
 - No new database. JSONL is grepable and enough for recent activity.
 - Polling at 2s. Fast enough to watch a request; simple enough to skip WebSockets.
 - UI: one HTML file, no React. Dense, dark, system/Plex fonts. Color only for status.
