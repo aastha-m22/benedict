@@ -104,10 +104,10 @@ Two panes. Status lives in a 40px header, not a card grid. The inspector splits 
 ├────────────┬─────────────────────────────────────────────────────┤
 │ Activity   │ query + route + duration                            │
 │ newest     ├──────────────────────────────┬──────────────────────┤
-│ first      │ Pipeline (timed stages)      │ Why this answer      │
+│ first      │ Pipeline (own scroll)        │ Why this answer      │
 │            │ click a stage for payload    │ hits, files, tools   │
 │            ├──────────────────────────────┴──────────────────────┤
-│            │ Reply that went to Slack / MCP                      │
+│            │ Reply (capped height, own scroll)                   │
 └────────────┴─────────────────────────────────────────────────────┘
 ```
 
@@ -233,7 +233,7 @@ Guarantees:
 - Local operator on the same machine as the bot. Bind `127.0.0.1` only.
 - Same process as the Slack bot for v1 (background asyncio/thread). MCP writes to the same `runs.jsonl` because it shares `BENEDICT_DATA_DIR`. The Slack-side recorder reloads the file when its size or mtime changes so MCP runs appear in Activity without restarting the bot.
 - No new database. JSONL is grepable and enough for recent activity.
-- Polling at 2s. Fast enough to watch a request; simple enough to skip WebSockets.
+- Polling at 2s. Fast enough to watch a request; simple enough to skip WebSockets. The inspector is not rebuilt when the selected run is unchanged, so an open stage keeps its scroll.
 - UI: one HTML file, no React. Dense, dark, system/Plex fonts. Color only for status.
 - Jaeger links are optional. If a `trace_id` exists on the run, show it. Do not require Observability 1–3 to ship this UI.
 - API handlers should return in well under 500ms for the last 200 runs.
@@ -280,6 +280,7 @@ Principles:
 - Activity is scannable in under a second: pip, kind, query, duration.
 - Inspector is a timeline, not a table of requests.
 - The right column of the inspector answers “why this answer?” (hits, files, tools).
+- Reply is a capped, independently scrollable pane. It must not push the pipeline out of view.
 
 Keyboard: `j` / `k` move in Activity. `1` Activity, `2` Workspaces.
 

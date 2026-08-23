@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-08-23
+
+### Fixed
+- Operator UI inspector keeps the pipeline scrollable when a long reply would otherwise fill the pane. Reply has a capped height and its own scroll.
+- Opening a pipeline stage no longer jumps back to the top on the 2s poll. The inspector is not rebuilt when the run is unchanged, and payload scroll is restored when it is.
+
 ## [0.5.4] - 2026-08-23
 
 ### Fixed
