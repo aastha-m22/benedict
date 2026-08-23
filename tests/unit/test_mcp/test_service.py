@@ -7,6 +7,7 @@ from benedict.llm.llm_mock import MockLLM
 from benedict.mcp.project import ProjectResolver, load_channel_state
 from benedict.mcp.service import BenedictMcpService
 from benedict.metadata import MetadataReader
+from benedict.operator_ui.recorder import JsonlRunRecorder
 from benedict.semantic_indexer.semantic_indexer_mock import MockSemanticIndexer
 from benedict.workspace.action_logger import ActionLogger
 from benedict.workspace.workspace_manager import WorkspaceManager
@@ -21,7 +22,7 @@ files:
 
 
 def _build_service(
-    tmp_path: Path, *, with_llm: bool = True, index: bool = True
+    tmp_path: Path, *, with_llm: bool = True, index: bool = True, run_recorder=None
 ) -> BenedictMcpService:
     source = tmp_path / "src" / "example"
     source.mkdir(parents=True)
@@ -53,6 +54,7 @@ def _build_service(
         semantic_indexer=indexer,
         llm=MockLLM() if with_llm else None,
         workspace_manager=manager,
+        run_recorder=run_recorder,
     )
 
 
@@ -108,6 +110,19 @@ def test_ask_with_and_without_llm(tmp_path: Path):
     missing = no_llm.ask("hello", repo="acme/example")
     assert missing["ok"] is False
     assert "ANTHROPIC_API_KEY" in missing["error"]
+
+
+def test_ask_records_operator_run(tmp_path: Path):
+    recorder = JsonlRunRecorder(tmp_path / "runs.jsonl")
+    service = _build_service(tmp_path, with_llm=True, run_recorder=recorder)
+    answer = service.ask("What does this repo do?", repo="acme/example")
+    assert answer["ok"] is True
+    runs = recorder.list_runs(limit=10)
+    assert len(runs) == 1
+    assert runs[0]["source"] == "mcp"
+    assert runs[0]["route"] == "BenedictMcpService.ask"
+    assert "What does this repo do?" in runs[0]["query"]
+    assert runs[0]["status"] == "ok"
 
 
 def test_unknown_project_error(tmp_path: Path):
