@@ -5,9 +5,12 @@ Feeds tool results back to the model so it can interpret output or call again.
 
 import json
 import logging
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 from .tool_framework import ToolRegistry, ToolResult
+from benedict.operator_ui.recorder import record_stage
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +75,21 @@ def run_tool_loop(
     """
     tools = tool_registry.to_anthropic_tools()
     working_messages: List[Dict[str, Any]] = list(messages)
+    model = os.environ.get("ANTHROPIC_MODEL", "claude")
 
     for iteration in range(max_iterations):
+        llm_started = time.perf_counter()
         response = llm.generate(
             messages=working_messages,
             system=system,
             tools=tools,
             max_tokens=max_tokens,
+        )
+        record_stage(
+            "llm",
+            duration_ms=int((time.perf_counter() - llm_started) * 1000),
+            label=model,
+            detail={"iteration": iteration + 1},
         )
 
         if isinstance(response, str):
@@ -103,7 +114,17 @@ def run_tool_loop(
             arguments = call.get("input") or call.get("arguments") or {}
             call_id = call.get("id")
             logger.info("Tool loop iteration %s: %s(%s)", iteration + 1, name, arguments)
+            tool_started = time.perf_counter()
             result = tool_registry.execute(name, arguments, context)
+            argv = arguments.get("argv") if isinstance(arguments, dict) else arguments
+            record_stage(
+                "tool",
+                status="ok" if result.success else "error",
+                duration_ms=int((time.perf_counter() - tool_started) * 1000),
+                label=f"{name}  {argv}" if argv else (name or "tool"),
+                detail={"name": name, "arguments": arguments, "error": result.error},
+                child=True,
+            )
             tool_results.append(
                 {
                     "type": "tool_result",

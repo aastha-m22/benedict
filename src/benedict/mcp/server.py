@@ -100,6 +100,8 @@ def build_mcp_service(
     except Exception as exc:
         logger.warning("Semantic indexer not available: %s", exc)
 
+    from benedict.operator_ui.server import create_recorder
+
     return BenedictMcpService(
         resolver=resolver,
         metadata_reader=MetadataReader(),
@@ -107,6 +109,7 @@ def build_mcp_service(
         llm=llm,
         workspace_manager=workspace_manager,
         repo_reader=repo_reader,
+        run_recorder=create_recorder(data),
     )
 
 
@@ -180,9 +183,15 @@ def main() -> None:
     _load_env()
     data_dir = get_data_dir()
     logger.info("Starting Benedict MCP server (data_dir=%s)", data_dir)
-    service = build_mcp_service(data_dir=data_dir)
-    mcp = create_mcp_server(service)
-    mcp.run(transport="stdio")
+    from benedict.operator_ui.server import clear_mcp_pid, write_mcp_pid
+
+    write_mcp_pid(data_dir)
+    try:
+        service = build_mcp_service(data_dir=data_dir)
+        mcp = create_mcp_server(service)
+        mcp.run(transport="stdio")
+    finally:
+        clear_mcp_pid(data_dir)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
@@ -31,6 +32,7 @@ from benedict.commands import (
 )
 from benedict.commands.github_tools import RunGithubTool
 from benedict.commands.tool_loop import run_tool_loop
+from benedict.operator_ui.recorder import record_stage
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ class RepoAgent:
         conversation_repository: Optional[ConversationRepository] = None,
         workspace_manager: Optional[WorkspaceManager] = None,
         conversation_history_indexer: Optional[ConversationHistoryIndexer] = None,
+        run_recorder=None,
     ):
         """Initialize repository agent.
 
@@ -61,6 +64,7 @@ class RepoAgent:
             conversation_repository: Optional conversation repository (created from state_file if None)
             workspace_manager: Optional workspace manager for workspace operations
             conversation_history_indexer: Optional conversation history indexer for Slack history
+            run_recorder: Optional operator-UI run recorder
         """
         self.state_file = Path(state_file)
         self.llm = llm
@@ -68,6 +72,11 @@ class RepoAgent:
         self.semantic_indexer = semantic_indexer
         self.workspace_manager = workspace_manager
         self.conversation_history_indexer = conversation_history_indexer
+        if run_recorder is None:
+            from benedict.operator_ui.recorder import NullRunRecorder
+
+            run_recorder = NullRunRecorder()
+        self.run_recorder = run_recorder
         self.metadata_generator = MetadataGenerator() if workspace_manager else None
         self.tool_registry = None
         self.llm_classifier = None
@@ -416,6 +425,12 @@ class RepoAgent:
         repo = self.get_channel_repo(channel_id)
 
         if not repo:
+            record_stage(
+                "reply",
+                status="error",
+                label="not onboarded",
+                detail={"reason": "no channel → repo mapping"},
+            )
             return (
                 False,
                 "⚠️ Not Onboarded\n\n"
@@ -435,6 +450,7 @@ class RepoAgent:
         # Metadata classifier is a narrow shortcut. GitHub, code Q&A, and
         # issue creation belong on the conversation path (run_github).
         if self.llm and self.workspace_manager and self.is_metadata_command(text):
+            classify_started = time.perf_counter()
             try:
                 workspace_path = self.workspace_manager.get_workspace_path(channel_id)
                 repo_path = workspace_path / repo
@@ -471,6 +487,14 @@ class RepoAgent:
                     
                     if llm_result and llm_result.get("tool_calls"):
                         logger.info(f"LLM returned {len(llm_result['tool_calls'])} tool calls: {[tc.get('name') for tc in llm_result['tool_calls']]}")
+                        record_stage(
+                            "classify",
+                            duration_ms=int((time.perf_counter() - classify_started) * 1000),
+                            label="metadata shortcut",
+                            detail={
+                                "tool_calls": [tc.get("name") for tc in llm_result["tool_calls"]]
+                            },
+                        )
                         # Execute tool calls using registry
                         tool_calls = llm_result["tool_calls"]
                         results = []
@@ -479,7 +503,16 @@ class RepoAgent:
                         for tool_call in tool_calls:
                             tool_name = tool_call.get("name")
                             arguments = tool_call.get("arguments") or tool_call.get("input", {})
+                            tool_started = time.perf_counter()
                             result = tool_registry.execute(tool_name, arguments, context)
+                            record_stage(
+                                "tool",
+                                status="ok" if result.success else "error",
+                                duration_ms=int((time.perf_counter() - tool_started) * 1000),
+                                label=tool_name or "tool",
+                                detail={"name": tool_name, "arguments": arguments},
+                                child=True,
+                            )
                             results.append(result)
                         
                         # Format results
@@ -504,14 +537,35 @@ class RepoAgent:
                             "Metadata tools failed (%s); falling through to conversation",
                             errors,
                         )
+                        record_stage(
+                            "classify",
+                            status="error",
+                            duration_ms=int((time.perf_counter() - classify_started) * 1000),
+                            label="metadata shortcut failed",
+                            detail={"errors": errors},
+                        )
             except Exception as e:
                 logger.warning(f"LLM classification failed: {e}", exc_info=True)
+                record_stage(
+                    "classify",
+                    status="error",
+                    label="classifier exception",
+                    detail={"error": str(e)},
+                )
                 # Fall through to regular LLM query
+        else:
+            record_stage(
+                "classify",
+                status="skip",
+                label="skipped — not metadata wording",
+                detail={"is_metadata_command": False},
+            )
         
         # No command detected - treat as query (fall through to LLM)
 
         # If no LLM or repo reader, return stub response
         if not self.llm or not self.repo_reader:
+            record_stage("llm", status="skip", label="stub — no LLM or repo reader")
             response_text = (
                 f"I'm your agent for `{repo}`. 🤖\n\n"
                 f"_(LLM integration not connected yet, but I know we're talking about {repo}!)_\n\n"
