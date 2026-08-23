@@ -56,7 +56,7 @@ class MetadataToolCallingLLM:
         return f"[conversation] {last}"
 
 
-def _onboarded_agent(tmp_path: Path, llm, with_metadata: bool = False) -> RepoAgent:
+def _onboarded_agent(tmp_path: Path, llm, with_metadata: bool = False, run_recorder=None) -> RepoAgent:
     repo = "example-org/example-repo"
     workspace_manager = WorkspaceManager(
         workspaces_dir=str(tmp_path / "workspaces"), copy_mode="copy"
@@ -67,6 +67,7 @@ def _onboarded_agent(tmp_path: Path, llm, with_metadata: bool = False) -> RepoAg
         repo_reader=MockRepoReader(repos={repo: {"README.md": "# Example\n"}}),
         workspace_manager=workspace_manager,
         conversation_repository=MockConversationRepository(),
+        run_recorder=run_recorder,
     )
     agent.set_channel_repo("C123", repo, "Ualice")
     repo_path = workspace_manager.get_workspace_path("C123") / repo
@@ -130,6 +131,28 @@ def test_failed_metadata_tools_fall_through_to_conversation(tmp_path):
     assert success is True
     assert "Some operations failed" not in message
     assert "[conversation]" in message
+
+
+def test_conversation_records_llm_prompt(tmp_path):
+    from benedict.operator_ui.recorder import JsonlRunRecorder
+
+    recorder = JsonlRunRecorder(tmp_path / "runs.jsonl")
+    agent = _onboarded_agent(tmp_path, MockLLM(), run_recorder=recorder)
+    run = recorder.begin(query="what is this repo?", channel_id="C123")
+    success, message = agent.handle_conversation("C123", "what is this repo?", "111.226")
+    run.finish(status="ok" if success else "error", reply=message)
+
+    assert success is True
+    loaded = recorder.get(run.id)
+    llm_stages = [stage for stage in loaded["stages"] if stage["name"] == "llm"]
+    assert llm_stages
+    prompt = llm_stages[-1]["detail"]
+    assert "You are Benedict" in prompt["system"]
+    assert "example-org/example-repo" in prompt["system"]
+    assert any(
+        msg.get("role") == "user" and "what is this repo?" in str(msg.get("content"))
+        for msg in prompt["messages"]
+    )
 
 
 def test_tool_registry_skips_tools_when_metadata_missing():

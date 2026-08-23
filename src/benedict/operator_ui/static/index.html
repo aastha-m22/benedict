@@ -117,6 +117,11 @@
     .hit, .file, .tool-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 5px 0; font-size: 12px; }
     .hit .path, .file { color: var(--ink); }
     .score, .n { color: var(--faint); font-variant-numeric: tabular-nums; }
+    .prompt {
+      margin: 0; max-height: 360px; overflow: auto;
+      color: var(--muted); font-size: 11.5px; line-height: 1.55;
+      white-space: pre-wrap; overflow-wrap: break-word;
+    }
     .empty { padding: 40px 20px; color: var(--faint); text-align: center; }
     .table { width: 100%; border-collapse: collapse; }
     .table th, .table td { padding: 10px 16px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
@@ -275,6 +280,7 @@
       const hits = [];
       const files = [];
       const tools = [];
+      let prompt = null;
       for (const s of r.stages || []) {
         if (s.name === "search" && s.detail && Array.isArray(s.detail.hits)) hits.push(...s.detail.hits);
         if (s.name === "context" && s.detail && Array.isArray(s.detail.files)) {
@@ -284,8 +290,21 @@
           const name = (s.detail && s.detail.name) || s.label || "tool";
           tools.push([name, fmtMs(s.duration_ms), s.status || "ok"]);
         }
+        if (s.name === "llm" && s.detail && (s.detail.system != null || Array.isArray(s.detail.messages))) {
+          prompt = s.detail;
+        }
       }
-      return { hits, files, tools };
+      return { hits, files, tools, prompt };
+    }
+
+    function formatPrompt(p) {
+      const parts = [];
+      if (p.system) parts.push("system\n" + p.system);
+      for (const m of p.messages || []) {
+        const body = typeof m.content === "string" ? m.content : JSON.stringify(m.content, null, 2);
+        parts.push((m.role || "message") + "\n" + (body || ""));
+      }
+      return parts.join("\n\n");
     }
 
     function runFingerprint(r, stage) {
@@ -362,7 +381,8 @@
         }).join("")}</div>` : ""}
         ${ctx.files.length ? `<div class="ctx-block"><h2>In context</h2>${ctx.files.map(([p]) => `<div class="file"><span class="mono">${escapeHtml(p)}</span></div>`).join("")}</div>` : ""}
         ${ctx.tools.length ? `<div class="ctx-block"><h2>Tools</h2>${ctx.tools.map(([n, t, st]) => `<div class="tool-row"><span class="mono">${escapeHtml(n)}</span><span class="n">${escapeHtml(t)} · ${escapeHtml(st)}</span></div>`).join("")}</div>` : ""}
-        ${!ctx.hits.length && !ctx.files.length && !ctx.tools.length ? `<div class="empty">No retrieval or tools on this run.</div>` : ""}
+        ${ctx.prompt ? `<div class="ctx-block"><h2>Prompt${ctx.prompt.iteration ? " · call " + escapeHtml(ctx.prompt.iteration) : ""}${ctx.prompt.truncated ? " · truncated" : ""}</h2><pre class="prompt mono">${escapeHtml(formatPrompt(ctx.prompt))}</pre></div>` : ""}
+        ${!ctx.hits.length && !ctx.files.length && !ctx.tools.length && !ctx.prompt ? `<div class="empty">No retrieval or tools on this run.</div>` : ""}
       `;
       $("inspector").innerHTML = `
         <div class="run-title">

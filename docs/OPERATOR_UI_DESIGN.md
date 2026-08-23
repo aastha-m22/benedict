@@ -105,7 +105,8 @@ Two panes. Status lives in a 40px header, not a card grid. The inspector splits 
 │ Activity   │ query + route + duration                            │
 │ newest     ├──────────────────────────────┬──────────────────────┤
 │ first      │ Pipeline (own scroll)        │ Why this answer      │
-│            │ click a stage for payload    │ hits, files, tools   │
+│            │ click a stage for payload    │ hits, files, tools,  │
+│            │                              │ prompt               │
 │            ├──────────────────────────────┴──────────────────────┤
 │            │ Reply (capped height, own scroll)                   │
 └────────────┴─────────────────────────────────────────────────────┘
@@ -188,7 +189,7 @@ Output: full `Run`.
 
 `stage.name` values: `route` | `classify` | `search` | `context` | `llm` | `tool` | `reply`.
 
-`detail` is stage-specific and must stay JSON-serializable. Truncate large blobs (tool stdout, system prompt) to 32 KiB with a `truncated: true` flag.
+`detail` is stage-specific and must stay JSON-serializable. Truncate large blobs (tool stdout, system prompt) to 32 KiB with a `truncated: true` flag. The `llm` stage stores the prompt that was sent: `system` (string) and `messages` (role/content list). The inspector’s “Why this answer” pane shows the last `llm` stage’s prompt.
 
 ### `GET /api/workspaces`
 
@@ -206,7 +207,7 @@ Serves the console HTML.
 4. Activity shows a new `conversation` run within 2 seconds.
 5. Operator clicks it (or it auto-selects if it is the newest).
 6. Inspector shows: route → search (8 hits) → context (4 files) → llm → `run_github` → reply.
-7. Operator clicks `search` and sees hit paths and scores. Clicks `tool` and sees argv plus stdout.
+7. Operator clicks `search` and sees hit paths and scores. Clicks `tool` and sees argv plus stdout. The right column shows the final prompt sent to the model.
 
 Result: the operator knows why that answer appeared, without opening a terminal.
 
@@ -268,7 +269,7 @@ Ship in this order. Do not build the HTTP server before runs exist.
 4. **UI** — serve `src/benedict/operator_ui/static/index.html` from `/`, wired to `/api/*`.
 5. **Docs** — README env vars, CHANGELOG.
 
-Done when: you can mention Benedict in Slack, open `http://127.0.0.1:8765`, and see that run’s stages, search hits, tool argv, and reply.
+Done when: you can mention Benedict in Slack, open `http://127.0.0.1:8765`, and see that run’s stages, search hits, tool argv, final prompt, and reply.
 
 ## 12. Visual design
 
@@ -279,7 +280,7 @@ Principles:
 - 13px UI type. Monospace for IDs, argv, paths, JSON.
 - Activity is scannable in under a second: pip, kind, query, duration.
 - Inspector is a timeline, not a table of requests.
-- The right column of the inspector answers “why this answer?” (hits, files, tools).
+- The right column of the inspector answers “why this answer?” (hits, files, tools, prompt).
 - Reply is a capped, independently scrollable pane. It must not push the pipeline out of view.
 
 Keyboard: `j` / `k` move in Activity. `1` Activity, `2` Workspaces.

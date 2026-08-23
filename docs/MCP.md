@@ -41,7 +41,7 @@ Out of scope: a custom agent-to-agent protocol. This is MCP tools only.
 
 If `repo` is omitted, the server uses the process working directory when it matches an onboarded clone. If several projects are onboarded and cwd does not match, call `list_projects` and pass `repo`.
 
-`ask_benedict` and `list_projects` write a run to `$BENEDICT_DATA_DIR/runs.jsonl`. If the Slack bot is running, the operator console at `http://127.0.0.1:8765` reloads that file and shows the MCP call in Activity. `search_code`, `get_repository_summary`, and `get_recent_actions` are not recorded yet.
+`ask_benedict` and `list_projects` write a run to `$BENEDICT_DATA_DIR/runs.jsonl`. If the Slack bot is running, the operator console at `http://127.0.0.1:8765` reloads that file and shows the MCP call in Activity. For `ask_benedict`, **Why this answer** includes the prompt sent to the model. `search_code`, `get_repository_summary`, and `get_recent_actions` are not recorded yet.
 
 ## 4. Configuration
 

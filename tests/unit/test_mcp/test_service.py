@@ -123,6 +123,12 @@ def test_ask_records_operator_run(tmp_path: Path):
     assert runs[0]["route"] == "BenedictMcpService.ask"
     assert "What does this repo do?" in runs[0]["query"]
     assert runs[0]["status"] == "ok"
+    llm_stages = [stage for stage in runs[0]["stages"] if stage["name"] == "llm"]
+    assert llm_stages
+    prompt = llm_stages[-1]["detail"]
+    assert "Repository context" in prompt["system"]
+    assert prompt["messages"][0]["role"] == "user"
+    assert "What does this repo do?" in prompt["messages"][0]["content"]
 
 
 def test_unknown_project_error(tmp_path: Path):

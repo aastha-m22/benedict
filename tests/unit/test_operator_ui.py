@@ -90,6 +90,35 @@ def test_null_recorder_is_safe():
     record_stage("search")  # no current run
 
 
+def test_truncate_keeps_prompt_keys():
+    from benedict.operator_ui.recorder import MAX_DETAIL_BYTES, _truncate
+
+    system = "S" * (MAX_DETAIL_BYTES + 2000)
+    out = _truncate({"system": system, "messages": [{"role": "user", "content": "q"}]})
+    assert "system" in out
+    assert out["system"].startswith("S")
+    assert out.get("truncated") is True
+    assert "truncated" in out["system"]
+    assert out["messages"][0]["content"] == "q"
+    assert len(json.dumps(out).encode("utf-8")) <= MAX_DETAIL_BYTES
+
+
+def test_record_llm_stage_snapshots_prompt(tmp_path: Path):
+    from benedict.operator_ui.recorder import record_llm_stage
+
+    recorder = JsonlRunRecorder(tmp_path / "runs.jsonl")
+    run = recorder.begin(query="prompt me")
+    messages = [{"role": "user", "content": "hello"}]
+    record_llm_stage(system="be brief", messages=messages, duration_ms=12, extra={"iteration": 1})
+    messages.append({"role": "assistant", "content": "later mutation"})
+    run.finish(status="ok", reply="ok")
+    loaded = recorder.get(run.id)
+    detail = loaded["stages"][-1]["detail"]
+    assert detail["system"] == "be brief"
+    assert detail["messages"] == [{"role": "user", "content": "hello"}]
+    assert detail["iteration"] == 1
+
+
 def test_record_stage_attaches_to_current_run(tmp_path: Path):
     recorder = JsonlRunRecorder(tmp_path / "runs.jsonl")
     run = recorder.begin(query="search me")

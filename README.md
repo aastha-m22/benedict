@@ -6,7 +6,7 @@ Use Benedict when a Slack channel is the working surface for a codebase and you 
 
 ## Current status
 
-Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.5). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.6). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
 **In production use today:**
 
@@ -20,7 +20,7 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.5). It is
 - Slack conversation history indexing into the workspace
 - GitHub CLI (`gh`) during conversations, when `gh` is installed and authenticated on the host
 - MCP server (`benedict-mcp`) so Cursor and Claude Code can query onboarded projects
-- Local operator console at `http://127.0.0.1:8765` for inspecting Slack and MCP runs
+- Local operator console at `http://127.0.0.1:8765` for inspecting Slack and MCP runs (pipeline, search hits, tools, and the final prompt sent to the model)
 
 **Not implemented:** GitHub API as a `RepoReader`, Notion, Google Docs, Cursor session logs, and a background git/file watcher process. Changelog entries for a watcher describe work that is no longer in the tree. `GitChangeDetector` remains and is used for incremental indexing.
 
@@ -187,7 +187,7 @@ python -m benedict.main
 
 You should see: `Bot is running! Press Ctrl+C to stop.` and `Operator UI http://127.0.0.1:8765`.
 
-Open that URL while the bot is running. Mention Benedict in Slack, or call `ask_benedict` from Cursor, then inspect the run. MCP writes the same `runs.jsonl`; the console reloads it on the next poll. Decision: [docs/adr/0001-local-operator-ui.md](docs/adr/0001-local-operator-ui.md). Spec: [docs/OPERATOR_UI_DESIGN.md](docs/OPERATOR_UI_DESIGN.md).
+Open that URL while the bot is running. Mention Benedict in Slack, or call `ask_benedict` from Cursor, then inspect the run. The inspector’s **Why this answer** column shows search hits, files in context, tools, and the final prompt sent to the model (`system` + `messages`). MCP writes the same `runs.jsonl`; the console reloads it on the next poll. Decision: [docs/adr/0001-local-operator-ui.md](docs/adr/0001-local-operator-ui.md). Spec: [docs/OPERATOR_UI_DESIGN.md](docs/OPERATOR_UI_DESIGN.md).
 
 ### MCP server (Cursor / Claude Code)
 
