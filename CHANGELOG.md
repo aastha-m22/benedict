@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-08-23
+
+### Changed
+- Operator UI pipeline stages are bordered cards. Child tool calls nest in the same card as the parent `llm` step so a long tool loop is scannable.
+
 ## [0.5.6] - 2026-08-23
 
 ### Added
