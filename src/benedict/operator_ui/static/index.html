@@ -86,19 +86,26 @@
     .run-title h1 { margin: 0 0 8px; font-size: 16px; font-weight: 500; line-height: 1.35; }
     .facts { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
     .facts b { color: var(--ink); font-weight: 500; }
-    .stages { padding: 8px 12px 20px; }
+    .stages { padding: 10px 12px 20px; display: flex; flex-direction: column; gap: 8px; }
+    .stage-card {
+      border: 1px solid var(--line); border-radius: 4px; background: var(--panel); overflow: hidden;
+    }
+    .stage-card.open { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+    .stage-card.err { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); }
     .stage {
       display: grid; grid-template-columns: 14px 92px 1fr 64px; gap: 8px; align-items: start;
-      width: 100%; padding: 8px; border-radius: 4px; color: inherit; text-align: left;
+      width: 100%; padding: 9px 10px; color: inherit; text-align: left;
     }
+    .stage + .stage, .payload + .stage { border-top: 1px solid var(--line); }
     .stage:hover, .stage.open { background: var(--hover); }
     .stage .name { color: var(--muted); }
     .stage .label { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .stage .ms { color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; }
-    .stage.child { padding-left: 28px; }
+    .stage.child { padding-left: 32px; background: var(--bg); }
+    .stage.child:hover, .stage.child.open { background: var(--hover); }
     .payload {
-      margin: 0 12px 10px 34px; padding: 10px 12px; background: #0a0908;
-      border: 1px solid var(--line); border-radius: 4px; color: var(--muted);
+      margin: 0; padding: 10px 12px; background: #0a0908;
+      border: 0; border-top: 1px solid var(--line); color: var(--muted);
       font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; overflow: auto; max-height: 280px;
     }
     .reply {
@@ -297,6 +304,36 @@
       return { hits, files, tools, prompt };
     }
 
+    function stageMarkup(s, i) {
+      const open = i === openStage;
+      const payload = open
+        ? `<pre class="payload mono">${escapeHtml(s.detail ? JSON.stringify(s.detail, null, 2) : "No payload recorded for this stage.")}</pre>`
+        : "";
+      return `
+        <button class="stage ${open ? "open" : ""} ${s.child ? "child" : ""}" data-stage="${i}">
+          <i class="pip ${pipClass(s.status)}"></i>
+          <span class="name mono">${escapeHtml(s.name)}</span>
+          <span class="label">${escapeHtml(s.label || s.name)}</span>
+          <span class="ms mono">${fmtMs(s.duration_ms)}</span>
+        </button>
+        ${payload}
+      `;
+    }
+
+    function renderStages(list) {
+      if (!list.length) return `<div class="empty">No stages yet.</div>`;
+      const groups = [];
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].child && groups.length) groups[groups.length - 1].push(i);
+        else groups.push([i]);
+      }
+      return groups.map((idxs) => {
+        const err = idxs.some((i) => list[i].status === "error");
+        const open = idxs.includes(openStage);
+        return `<div class="stage-card${err ? " err" : ""}${open ? " open" : ""}">${idxs.map((i) => stageMarkup(list[i], i)).join("")}</div>`;
+      }).join("");
+    }
+
     function formatPrompt(p) {
       const parts = [];
       if (p.system) parts.push("system\n" + p.system);
@@ -356,21 +393,7 @@
         $("inspector").innerHTML = `<div class="empty">Select a run from Activity.</div>`;
         return;
       }
-      const stages = (r.stages || []).map((s, i) => {
-        const open = i === openStage;
-        const payload = open
-          ? `<pre class="payload mono">${escapeHtml(s.detail ? JSON.stringify(s.detail, null, 2) : "No payload recorded for this stage.")}</pre>`
-          : "";
-        return `
-          <button class="stage ${open ? "open" : ""} ${s.child ? "child" : ""}" data-stage="${i}">
-            <i class="pip ${pipClass(s.status)}"></i>
-            <span class="name mono">${escapeHtml(s.name)}</span>
-            <span class="label">${escapeHtml(s.label || s.name)}</span>
-            <span class="ms mono">${fmtMs(s.duration_ms)}</span>
-          </button>
-          ${payload}
-        `;
-      }).join("");
+      const stages = renderStages(r.stages || []);
       const ctx = deriveContext(r);
       const context = `
         <div class="pane-head">Why this answer</div>

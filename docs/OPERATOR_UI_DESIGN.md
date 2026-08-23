@@ -279,7 +279,7 @@ Principles:
 - Flat surfaces. No gradients, no shadows, no emoji.
 - 13px UI type. Monospace for IDs, argv, paths, JSON.
 - Activity is scannable in under a second: pip, kind, query, duration.
-- Inspector is a timeline, not a table of requests.
+- Inspector is a timeline, not a table of requests. Each stage is a bordered card; child tool stages nest in the parent `llm` card.
 - The right column of the inspector answers “why this answer?” (hits, files, tools, prompt).
 - Reply is a capped, independently scrollable pane. It must not push the pipeline out of view.
 
