@@ -74,14 +74,15 @@
     .kind { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
     .kind.slack { color: var(--slack); }
     .kind.mcp { color: var(--mcp); }
-    .inspector { display: flex; flex-direction: column; min-height: 0; }
+    .inspector { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .inspector > .empty { overflow: auto; }
     .split {
-      flex: 1; min-height: 0; display: grid;
+      flex: 1 1 auto; min-height: 120px; display: grid;
       grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.9fr); border-bottom: 1px solid var(--line);
     }
     .split > div { min-width: 0; min-height: 0; overflow: auto; }
     .split > div:last-child { border-left: 1px solid var(--line); }
-    .run-title { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+    .run-title { flex: 0 0 auto; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
     .run-title h1 { margin: 0 0 8px; font-size: 16px; font-weight: 500; line-height: 1.35; }
     .facts { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
     .facts b { color: var(--ink); font-weight: 500; }
@@ -100,8 +101,17 @@
       border: 1px solid var(--line); border-radius: 4px; color: var(--muted);
       font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; overflow: auto; max-height: 280px;
     }
-    .reply { margin: 0 20px 20px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
-    .reply .k { margin-bottom: 8px; color: var(--faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .reply {
+      flex: 0 1 auto; min-height: 72px; max-height: min(220px, 28vh);
+      margin: 12px 20px 16px; padding: 12px 14px;
+      border: 1px solid var(--line); border-radius: 4px; color: var(--muted);
+      overflow: auto; white-space: pre-wrap; overflow-wrap: break-word;
+    }
+    .reply .k {
+      position: sticky; top: 0; margin: -12px -14px 8px; padding: 12px 14px 8px;
+      background: var(--bg); color: var(--faint); font-size: 11px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
     .ctx-block { padding: 12px 14px; border-bottom: 1px solid var(--line); }
     .ctx-block h2 { margin: 0 0 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
     .hit, .file, .tool-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 5px 0; font-size: 12px; }
@@ -155,6 +165,7 @@
     let filter = "all";
     let selected = null;
     let openStage = 0;
+    let inspectorFingerprint = "";
     const $ = (id) => document.getElementById(id);
 
     function escapeHtml(s) {
@@ -209,18 +220,18 @@
       if (selected && !summaries.some((r) => r.id === selected) && summaries[0]) selected = summaries[0].id;
       renderList();
       if (selected) await loadDetail(selected, false);
-      else renderInspector();
+      else renderInspector(false);
     }
 
     async function loadDetail(id, resetStage) {
       const res = await fetch("/api/runs/" + encodeURIComponent(id));
-      if (!res.ok) { detail = null; renderInspector(); return; }
+      if (!res.ok) { detail = null; renderInspector(false); return; }
       detail = await res.json();
       if (resetStage) {
         const i = (detail.stages || []).findIndex((s) => ["search", "tool", "classify"].includes(s.name));
         openStage = i >= 0 ? i : 0;
       }
-      renderInspector();
+      renderInspector(!resetStage);
     }
 
     function renderStatus(s) {
@@ -277,8 +288,51 @@
       return { hits, files, tools };
     }
 
-    function renderInspector() {
+    function runFingerprint(r, stage) {
+      if (!r) return "empty";
+      return JSON.stringify({
+        id: r.id,
+        status: r.status,
+        ended_at: r.ended_at,
+        duration_ms: r.duration_ms,
+        reply: r.reply,
+        error: r.error,
+        stages: r.stages,
+        openStage: stage,
+      });
+    }
+
+    function captureInspectorScroll() {
+      const pipeline = $("pipeline");
+      const context = $("context");
+      const reply = $("reply");
+      const payload = document.querySelector("#pipeline .payload");
+      return {
+        pipeline: pipeline ? pipeline.scrollTop : 0,
+        context: context ? context.scrollTop : 0,
+        reply: reply ? reply.scrollTop : 0,
+        payload: payload ? payload.scrollTop : 0,
+      };
+    }
+
+    function restoreInspectorScroll(pos) {
+      if (!pos) return;
+      const pipeline = $("pipeline");
+      const context = $("context");
+      const reply = $("reply");
+      const payload = document.querySelector("#pipeline .payload");
+      if (pipeline) pipeline.scrollTop = pos.pipeline;
+      if (context) context.scrollTop = pos.context;
+      if (reply) reply.scrollTop = pos.reply;
+      if (payload) payload.scrollTop = pos.payload;
+    }
+
+    function renderInspector(keepScroll) {
       const r = detail;
+      const fp = runFingerprint(r, openStage);
+      if (keepScroll && fp === inspectorFingerprint && $("pipeline")) return;
+      inspectorFingerprint = fp;
+      const pos = keepScroll ? captureInspectorScroll() : null;
       if (!r) {
         $("inspector").innerHTML = `<div class="empty">Select a run from Activity.</div>`;
         return;
@@ -324,11 +378,12 @@
           </div>
         </div>
         <div class="split">
-          <div><div class="pane-head">Pipeline</div><div class="stages">${stages || `<div class="empty">No stages yet.</div>`}</div></div>
-          <div>${context}</div>
+          <div id="pipeline"><div class="pane-head">Pipeline</div><div class="stages">${stages || `<div class="empty">No stages yet.</div>`}</div></div>
+          <div id="context">${context}</div>
         </div>
-        <div class="reply"><div class="k">Reply</div>${escapeHtml(r.reply || (r.status === "running" ? "Still running…" : "(no reply)"))}</div>
+        <div class="reply" id="reply"><div class="k">Reply</div>${escapeHtml(r.reply || (r.status === "running" ? "Still running…" : "(no reply)"))}</div>
       `;
+      restoreInspectorScroll(pos);
     }
 
     function renderWorkspaces(rows) {
@@ -376,7 +431,7 @@
       const stage = e.target.closest(".stage");
       if (stage) {
         openStage = Number(stage.dataset.stage);
-        renderInspector();
+        renderInspector(true);
       }
     });
 
