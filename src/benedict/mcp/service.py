@@ -6,10 +6,13 @@ without a protocol session.
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from benedict.mcp.project import Project, ProjectResolutionError, ProjectResolver
+from benedict.operator_ui.recorder import record_llm_stage
 from benedict.workspace.action_logger import ActionLogger
 
 MAX_SEARCH_CONTENT_CHARS = 4000
@@ -250,10 +253,18 @@ class BenedictMcpService:
             "This call does not include Slack conversation history.\n\n"
             f"## Repository context\n\n{context}"
         )
+        messages = [{"role": "user", "content": question.strip()}]
+        llm_started = time.perf_counter()
         answer = self._llm.generate(
-            messages=[{"role": "user", "content": question.strip()}],
+            messages=messages,
             system=system,
             max_tokens=ASK_MAX_TOKENS,
+        )
+        record_llm_stage(
+            system=system,
+            messages=messages,
+            duration_ms=int((time.perf_counter() - llm_started) * 1000),
+            label=os.environ.get("ANTHROPIC_MODEL", "claude"),
         )
         if isinstance(answer, dict):
             answer = str(answer)

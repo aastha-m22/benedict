@@ -110,3 +110,26 @@ def test_loop_stops_at_max_iterations():
     assert "tool-call limit" in text
     assert len(tool.calls) == 2
     assert len(llm.calls) == 2
+
+
+def test_loop_records_prompt_on_llm_stage(tmp_path):
+    from benedict.operator_ui.recorder import JsonlRunRecorder
+
+    recorder = JsonlRunRecorder(tmp_path / "runs.jsonl")
+    run = recorder.begin(query="hi")
+    llm = ScriptedLLM(["hello"])
+    registry, _tool = _registry_with_stub()
+    text = run_tool_loop(
+        llm,
+        messages=[{"role": "user", "content": "hi"}],
+        system="sys prompt",
+        tool_registry=registry,
+    )
+    run.finish(status="ok", reply=text)
+    loaded = recorder.get(run.id)
+    llm_stages = [stage for stage in loaded["stages"] if stage["name"] == "llm"]
+    assert len(llm_stages) == 1
+    detail = llm_stages[0]["detail"]
+    assert detail["system"] == "sys prompt"
+    assert detail["messages"][0]["content"] == "hi"
+    assert detail["iteration"] == 1

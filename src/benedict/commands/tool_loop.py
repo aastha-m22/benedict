@@ -10,7 +10,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from .tool_framework import ToolRegistry, ToolResult
-from benedict.operator_ui.recorder import record_stage
+from benedict.operator_ui.recorder import record_llm_stage, record_stage
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +85,12 @@ def run_tool_loop(
             tools=tools,
             max_tokens=max_tokens,
         )
-        record_stage(
-            "llm",
+        record_llm_stage(
+            system=system,
+            messages=working_messages,
             duration_ms=int((time.perf_counter() - llm_started) * 1000),
             label=model,
-            detail={"iteration": iteration + 1},
+            extra={"iteration": iteration + 1},
         )
 
         if isinstance(response, str):

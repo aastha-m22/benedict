@@ -32,7 +32,7 @@ from benedict.commands import (
 )
 from benedict.commands.github_tools import RunGithubTool
 from benedict.commands.tool_loop import run_tool_loop
-from benedict.operator_ui.recorder import record_stage
+from benedict.operator_ui.recorder import record_llm_stage, record_stage
 
 logger = logging.getLogger(__name__)
 
@@ -789,10 +789,17 @@ class RepoAgent:
                     context=tool_context,
                 )
             else:
+                llm_started = time.perf_counter()
                 response = self.llm.generate(
                     messages=history_messages,
                     system=system,
                     max_tokens=2000,
+                )
+                record_llm_stage(
+                    system=system,
+                    messages=history_messages,
+                    duration_ms=int((time.perf_counter() - llm_started) * 1000),
+                    label=os.environ.get("ANTHROPIC_MODEL", "claude"),
                 )
                 response_text = response if isinstance(response, str) else str(response)
 
@@ -888,12 +895,19 @@ class RepoAgent:
         
         # 8. Generate response
         try:
+            llm_started = time.perf_counter()
             response = self.llm.generate(
                 messages=history_messages,
                 system=system,
                 max_tokens=2000,
             )
-            
+            record_llm_stage(
+                system=system,
+                messages=history_messages,
+                duration_ms=int((time.perf_counter() - llm_started) * 1000),
+                label=os.environ.get("ANTHROPIC_MODEL", "claude"),
+            )
+
             response_text = response if isinstance(response, str) else str(response)
             conversation.add_message("assistant", response_text)
             self.conversation_manager.save_conversation(conversation)

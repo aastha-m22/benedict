@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-08-23
+
+### Added
+- Operator UI **Why this answer** now shows the final prompt sent to the model (`system` + `messages`) from the last `llm` stage. Slack conversation, architect, MCP `ask_benedict`, and the tool loop all record it. Payloads over 32 KiB keep a truncated preview instead of dropping the prompt.
+
 ## [0.5.5] - 2026-08-23
 
 ### Fixed

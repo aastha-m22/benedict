@@ -30,21 +30,89 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:12].upper()
 
 
-def _truncate(value: Any) -> Any:
-    """Keep JSON payloads under MAX_DETAIL_BYTES."""
+def _json_copy(value: Any) -> Any:
     try:
-        raw = json.dumps(value, default=str)
+        return json.loads(json.dumps(value, default=str))
     except (TypeError, ValueError):
-        raw = str(value)
-    if len(raw.encode("utf-8")) <= MAX_DETAIL_BYTES:
+        return str(value)
+
+
+def _encoded_len(value: Any) -> int:
+    try:
+        return len(json.dumps(value, default=str).encode("utf-8"))
+    except (TypeError, ValueError):
+        return len(str(value).encode("utf-8"))
+
+
+def _longest_string_path(node: Any, path: List[Any]) -> Optional[tuple]:
+    """Return ``(path, length)`` of the longest string in ``node``."""
+    best: Optional[tuple] = None
+    if isinstance(node, str):
+        return (path, len(node))
+    if isinstance(node, dict):
+        for key, child in node.items():
+            found = _longest_string_path(child, path + [key])
+            if found and (best is None or found[1] > best[1]):
+                best = found
+    elif isinstance(node, list):
+        for index, child in enumerate(node):
+            found = _longest_string_path(child, path + [index])
+            if found and (best is None or found[1] > best[1]):
+                best = found
+    return best
+
+
+def _get_path(root: Any, path: List[Any]) -> Any:
+    current = root
+    for key in path:
+        current = current[key]
+    return current
+
+
+def _set_path(root: Any, path: List[Any], value: Any) -> None:
+    current = root
+    for key in path[:-1]:
+        current = current[key]
+    current[path[-1]] = value
+
+
+def _truncate(value: Any) -> Any:
+    """Keep JSON payloads under MAX_DETAIL_BYTES.
+
+    Large string fields are shortened in place so an LLM prompt still has
+    ``system`` and ``messages`` instead of a keys-only stub.
+    """
+    if _encoded_len(value) <= MAX_DETAIL_BYTES:
         return value
     if isinstance(value, str):
-        return {"truncated": True, "preview": value[:8000]}
+        keep = 8000
+        omitted = max(0, len(value) - keep)
+        return value[:keep] + f"\n...[truncated, {omitted} chars omitted]"
+    if not isinstance(value, (dict, list)):
+        return {"truncated": True, "preview": str(value)[:8000]}
+
+    out = _json_copy(value)
+    if isinstance(out, dict):
+        out["truncated"] = True
+    for _ in range(48):
+        if _encoded_len(out) <= MAX_DETAIL_BYTES:
+            return out
+        found = _longest_string_path(out, [])
+        if not found or found[1] <= 80:
+            break
+        path, length = found
+        keep = max(80, length // 2)
+        if keep >= length:
+            break
+        text = _get_path(out, path)
+        omitted = length - keep
+        _set_path(out, path, f"{text[:keep]}\n...[truncated, {omitted} chars omitted]")
+
+    if _encoded_len(out) <= MAX_DETAIL_BYTES:
+        return out
     if isinstance(value, dict):
         return {"truncated": True, "keys": list(value.keys())[:40]}
-    if isinstance(value, list):
-        return {"truncated": True, "n": len(value), "preview": value[:5]}
-    return {"truncated": True, "preview": raw[:8000]}
+    return {"truncated": True, "n": len(value), "preview": value[:5]}
 
 
 def current_run() -> Optional["ActiveRun"]:
@@ -71,6 +139,28 @@ def record_stage(
         label=label,
         detail=detail,
         child=child,
+    )
+
+
+def record_llm_stage(
+    *,
+    system: str,
+    messages: List[Dict[str, Any]],
+    duration_ms: int = 0,
+    status: str = "ok",
+    label: Optional[str] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Record the prompt sent to the model on the current run."""
+    detail: Dict[str, Any] = dict(extra or {})
+    detail["system"] = system or ""
+    detail["messages"] = _json_copy(messages or [])
+    record_stage(
+        "llm",
+        status=status,
+        duration_ms=duration_ms,
+        label=label,
+        detail=detail,
     )
 
 
