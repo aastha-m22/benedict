@@ -206,14 +206,21 @@ class NullRunRecorder:
 
 
 class JsonlRunRecorder:
-    """In-memory running runs plus an append-only JSONL file."""
+    """In-memory running runs plus an append-only JSONL file.
+
+    Slack and MCP are separate processes that share ``runs.jsonl``. Reads
+    reload when another process has appended, so the operator UI sees MCP
+    runs without restarting the Slack bot.
+    """
 
     def __init__(self, path: Path):
         self.path = Path(path)
         self._lock = threading.Lock()
         self._running: Dict[str, Dict[str, Any]] = {}
         self._recent: List[Dict[str, Any]] = []
+        self._file_key: Optional[tuple] = None
         self._load()
+        self._file_key = self._stat_key()
 
     def begin(self, **fields: Any) -> ActiveRun:
         try:
@@ -240,7 +247,9 @@ class JsonlRunRecorder:
         try:
             snapshot = json.loads(json.dumps(run.data, default=str))
             with self._lock:
+                self._reload_if_stale_locked()
                 self._running.pop(run.id, None)
+                self._recent = [row for row in self._recent if row.get("id") != run.id]
                 self._recent.append(snapshot)
                 if len(self._recent) > MAX_RUNS:
                     self._recent = self._recent[-MAX_RUNS:]
@@ -249,12 +258,14 @@ class JsonlRunRecorder:
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     with self.path.open("a", encoding="utf-8") as handle:
                         handle.write(json.dumps(snapshot, default=str) + "\n")
+                self._file_key = self._stat_key()
         except Exception:
             logger.warning("Failed to persist run %s", run.id, exc_info=True)
 
     def get(self, run_id: str) -> Optional[Dict[str, Any]]:
         try:
             with self._lock:
+                self._reload_if_stale_locked()
                 if run_id in self._running:
                     return json.loads(json.dumps(self._running[run_id]))
                 for item in reversed(self._recent):
@@ -273,6 +284,7 @@ class JsonlRunRecorder:
         try:
             cap = max(1, min(int(limit), 200))
             with self._lock:
+                self._reload_if_stale_locked()
                 items = list(self._running.values()) + list(self._recent)
             items.sort(key=lambda row: row.get("started_at") or "", reverse=True)
             out = []
@@ -293,10 +305,28 @@ class JsonlRunRecorder:
         try:
             today = _utc_now()[:10]
             with self._lock:
+                self._reload_if_stale_locked()
                 items = list(self._running.values()) + list(self._recent)
             return sum(1 for row in items if str(row.get("started_at") or "").startswith(today))
         except Exception:
             return 0
+
+    def _stat_key(self) -> Optional[tuple]:
+        try:
+            if not self.path.exists():
+                return None
+            stat = self.path.stat()
+            return (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            return None
+
+    def _reload_if_stale_locked(self) -> None:
+        """Re-read JSONL when another process has written it."""
+        key = self._stat_key()
+        if key == self._file_key:
+            return
+        self._load()
+        self._file_key = key
 
     def _load(self) -> None:
         if not self.path.exists():

@@ -41,6 +41,8 @@ Out of scope: a custom agent-to-agent protocol. This is MCP tools only.
 
 If `repo` is omitted, the server uses the process working directory when it matches an onboarded clone. If several projects are onboarded and cwd does not match, call `list_projects` and pass `repo`.
 
+`ask_benedict` and `list_projects` write a run to `$BENEDICT_DATA_DIR/runs.jsonl`. If the Slack bot is running, the operator console at `http://127.0.0.1:8765` reloads that file and shows the MCP call in Activity. `search_code`, `get_repository_summary`, and `get_recent_actions` are not recorded yet.
+
 ## 4. Configuration
 
 Point the MCP process at the Slack bot's data:
@@ -152,6 +154,7 @@ Result: the IDE answers from Benedict's index and metadata, not from a fresh uni
 | Repo not indexed | `search_code` returns no hits and tells you to run `@benedict update index` |
 | No `ANTHROPIC_API_KEY` | `ask_benedict` fails; other tools still work |
 | Missing metadata file | `get_repository_summary` returns a clear error; others still work |
+| Slack bot not running | MCP tools still work. Recorded runs stay on disk until the operator UI starts and reloads `runs.jsonl`. |
 
 The server does not create workspaces or mutate Slack state.
 
@@ -164,4 +167,4 @@ The server does not create workspaces or mutate Slack state.
 
 ## 10. Architecture
 
-`benedict.mcp.server` is a second composition root. It wires `ProjectResolver` and `BenedictMcpService`, then wraps them in MCP tools. Domain logic does not import the MCP SDK. The Slack bot is unchanged aside from sharing `benedict.paths`.
+`benedict.mcp.server` is a second composition root. It wires `ProjectResolver` and `BenedictMcpService`, then wraps them in MCP tools. Domain logic does not import the MCP SDK. The Slack bot is unchanged aside from sharing `benedict.paths`. MCP and Slack append the same `runs.jsonl`; the Slack-side recorder reloads the file when MCP writes.

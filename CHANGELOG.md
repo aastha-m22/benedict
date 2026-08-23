@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-23
+
+### Fixed
+- Operator UI now reloads `runs.jsonl` when the MCP process appends a run. Slack and MCP are separate processes; the Slack-side recorder previously only listed runs it had written itself, so `ask_benedict` never appeared in the debugger. Spec and ADR note the reload.
+
 ## [0.5.3] - 2026-08-23
 
 ### Added

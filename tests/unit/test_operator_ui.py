@@ -42,6 +42,44 @@ def test_recorder_isolates_io_failure(tmp_path: Path):
     assert run.id
 
 
+def test_recorder_sees_writes_from_another_process(tmp_path: Path):
+    """Slack UI and MCP are separate processes sharing one JSONL file."""
+    path = tmp_path / "runs.jsonl"
+    slack_view = JsonlRunRecorder(path)
+    mcp_writer = JsonlRunRecorder(path)
+    run = mcp_writer.begin(
+        source="mcp",
+        kind="mcp",
+        query="ask_benedict  issue 42",
+        repo="acme/x",
+        route="BenedictMcpService.ask",
+    )
+    run.finish(status="ok", reply="batch chroma deletes")
+
+    listed = slack_view.list_runs(limit=10)
+    assert any(row["id"] == run.id for row in listed)
+    loaded = slack_view.get(run.id)
+    assert loaded is not None
+    assert loaded["source"] == "mcp"
+    assert loaded["query"] == "ask_benedict  issue 42"
+    assert slack_view.runs_today() == 1
+
+
+def test_recorder_persist_keeps_other_process_runs(tmp_path: Path):
+    path = tmp_path / "runs.jsonl"
+    slack = JsonlRunRecorder(path)
+    mcp = JsonlRunRecorder(path)
+    mcp_run = mcp.begin(source="mcp", query="ask")
+    mcp_run.finish(status="ok", reply="yes")
+    slack_run = slack.begin(source="slack", query="hi")
+    slack_run.finish(status="ok", reply="there")
+
+    ids = {row["id"] for row in slack.list_runs()}
+    assert {mcp_run.id, slack_run.id} <= ids
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+
+
 def test_null_recorder_is_safe():
     recorder = NullRunRecorder()
     run = recorder.begin(query="nope")
