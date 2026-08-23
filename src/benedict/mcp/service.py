@@ -49,6 +49,7 @@ class BenedictMcpService:
         llm=None,
         workspace_manager=None,
         repo_reader=None,
+        run_recorder=None,
     ):
         """Initialize service with injected dependencies.
 
@@ -59,6 +60,7 @@ class BenedictMcpService:
             llm: Optional LLM for ask_benedict.
             workspace_manager: Optional WorkspaceManager for workspace-aware file reads.
             repo_reader: Optional fallback RepoReader for ask_benedict.
+            run_recorder: Optional operator-UI run recorder.
         """
         self._resolver = resolver
         self._metadata_reader = metadata_reader
@@ -66,11 +68,49 @@ class BenedictMcpService:
         self._llm = llm
         self._workspace_manager = workspace_manager
         self._repo_reader = repo_reader
+        if run_recorder is None:
+            from benedict.operator_ui.recorder import NullRunRecorder
+
+            run_recorder = NullRunRecorder()
+        self._run_recorder = run_recorder
+
+    def _mcp_run(self, route: str, query: str, repo, fn):
+        run = self._run_recorder.begin(
+            source="mcp",
+            kind="mcp",
+            query=query,
+            repo=repo or "",
+            route=route,
+        )
+        run.add_stage("route", label=route, detail={"matched": route})
+        try:
+            result = fn()
+            success = bool(result.get("ok")) if isinstance(result, dict) else True
+            reply = None
+            if isinstance(result, dict):
+                reply = result.get("answer") or result.get("error") or result.get("summary")
+                if reply is not None:
+                    reply = str(reply)
+                if result.get("repo"):
+                    run.set(repo=result.get("repo"), channel_id=result.get("channel_id") or "")
+            run.finish(
+                status="ok" if success else "error",
+                reply=reply,
+                error=None if success else (result.get("error") if isinstance(result, dict) else None),
+            )
+            return result
+        except Exception as exc:
+            run.finish(status="error", error=str(exc))
+            raise
 
     def list_projects(self) -> Dict[str, Any]:
         """List onboarded projects."""
-        projects = [project.to_dict() for project in self._resolver.list_projects()]
-        return _ok(projects=projects, count=len(projects))
+
+        def _do():
+            projects = [project.to_dict() for project in self._resolver.list_projects()]
+            return _ok(projects=projects, count=len(projects))
+
+        return self._mcp_run("list_projects", "list_projects", None, _do)
 
     def get_repository_summary(
         self, repo: Optional[str] = None, cwd: Optional[Path] = None
@@ -163,6 +203,19 @@ class BenedictMcpService:
         cwd: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """Answer a question using repository context. Does not include Slack history."""
+        return self._mcp_run(
+            "BenedictMcpService.ask",
+            f"ask_benedict  {question or ''}",
+            repo,
+            lambda: self._ask_untraced(question, repo, cwd),
+        )
+
+    def _ask_untraced(
+        self,
+        question: str,
+        repo: Optional[str] = None,
+        cwd: Optional[Path] = None,
+    ) -> Dict[str, Any]:
         if not question or not str(question).strip():
             return _err("question must be a non-empty string.")
         if not self._llm:

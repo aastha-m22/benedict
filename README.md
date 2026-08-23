@@ -6,7 +6,7 @@ Use Benedict when a Slack channel is the working surface for a codebase and you 
 
 ## Current status
 
-Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.2). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
+Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.3). It is not a remote GitHub-hosted reader. Onboarding resolves a **local** checkout, then isolates it per channel in a workspace.
 
 **In production use today:**
 
@@ -20,6 +20,7 @@ Benedict is a working Slack Socket Mode bot (Python 3.10+, version 0.5.2). It is
 - Slack conversation history indexing into the workspace
 - GitHub CLI (`gh`) during conversations, when `gh` is installed and authenticated on the host
 - MCP server (`benedict-mcp`) so Cursor and Claude Code can query onboarded projects
+- Local operator console at `http://127.0.0.1:8765` for inspecting Slack and MCP runs
 
 **Not implemented:** GitHub API as a `RepoReader`, Notion, Google Docs, Cursor session logs, and a background git/file watcher process. Changelog entries for a watcher describe work that is no longer in the tree. `GitChangeDetector` remains and is used for incremental indexing.
 
@@ -167,6 +168,9 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 | `BENEDICT_REPO_SOURCE_DIRS` | `~/Projects` | Comma-separated roots used during onboard |
 | `BENEDICT_CHUNK_SIZE` | `2000` | Index chunk size in characters |
 | `BENEDICT_METADATA_FILE` | `.metadata.benedict` | Override metadata file name/path |
+| `BENEDICT_OPERATOR_UI` | `1` | Local debug console. Set `0` to disable. |
+| `BENEDICT_OPERATOR_UI_HOST` | `127.0.0.1` | Bind address |
+| `BENEDICT_OPERATOR_UI_PORT` | `8765` | Console port |
 
 ## Run
 
@@ -181,7 +185,9 @@ python -m benedict.main
 # after install: benedict
 ```
 
-You should see: `Bot is running! Press Ctrl+C to stop.`
+You should see: `Bot is running! Press Ctrl+C to stop.` and `Operator UI http://127.0.0.1:8765`.
+
+Open that URL while the bot is running. Mention Benedict in Slack, then inspect the run. Decision: [docs/adr/0001-local-operator-ui.md](docs/adr/0001-local-operator-ui.md). Spec: [docs/OPERATOR_UI_DESIGN.md](docs/OPERATOR_UI_DESIGN.md).
 
 ### MCP server (Cursor / Claude Code)
 

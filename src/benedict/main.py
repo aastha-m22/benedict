@@ -6,6 +6,7 @@ Composition root where all dependencies are wired together.
 """
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -137,6 +138,11 @@ def main():
         logger.warning(f"⚠️ Conversation history indexer not available: {e}")
         logger.info("Slack history indexing will not be available")
 
+    from benedict.operator_ui.server import StatusMonitor, create_recorder, start_operator_ui
+
+    recorder = create_recorder(data_dir)
+    chroma_db_path = os.environ.get("BENEDICT_CHROMA_DB_DIR", str(data_dir / ".chroma_db"))
+
     # Create agent with dependencies
     agent = RepoAgent(
         state_file=state_file,
@@ -146,6 +152,20 @@ def main():
         conversation_repository=conversation_repository,
         workspace_manager=workspace_manager,
         conversation_history_indexer=conversation_history_indexer,
+        run_recorder=recorder,
+    )
+
+    start_operator_ui(
+        StatusMonitor(
+            data_dir=data_dir,
+            recorder=recorder,
+            state_file=Path(state_file),
+            workspaces_dir=Path(workspaces_dir),
+            chroma_path=Path(chroma_db_path),
+            started_at=datetime.now(timezone.utc),
+            model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+            copy_mode=copy_mode,
+        )
     )
 
     # Initialize state file if it doesn't exist

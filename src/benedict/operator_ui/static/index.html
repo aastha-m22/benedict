@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Benedict — Operator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0e0d0b;
+      --panel: #161513;
+      --hover: #1c1a17;
+      --line: #2c2924;
+      --ink: #f4f1ea;
+      --muted: #9a958c;
+      --faint: #6b665e;
+      --accent: #d4a574;
+      --ok: #8faf7a;
+      --err: #c46a4a;
+      --slack: #6f8fbf;
+      --mcp: #9a86c4;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 13px/1.45 "IBM Plex Sans", system-ui, sans-serif;
+    }
+    button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+    .app { height: 100%; display: grid; grid-template-rows: 44px 1fr; }
+    header {
+      display: flex; align-items: center; gap: 24px;
+      padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+    }
+    .brand { display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
+    .brand span { color: var(--faint); font-weight: 400; font-size: 12px; }
+    nav { display: flex; gap: 2px; }
+    nav button { padding: 6px 10px; border-radius: 4px; color: var(--muted); }
+    nav button:hover, nav button.active { color: var(--ink); background: var(--hover); }
+    .status { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; }
+    .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+    .pip.err { background: var(--err); }
+    .pip.dim { background: var(--faint); }
+    .pip.live { outline: 2px solid color-mix(in srgb, var(--ok) 35%, transparent); outline-offset: 2px; }
+    .view { height: 100%; min-height: 0; }
+    .hidden { display: none !important; }
+    .workspace { height: 100%; display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); }
+    .pane { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--line); }
+    .pane:last-child { border-right: 0; }
+    .pane-head {
+      position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 10px 12px; background: var(--bg); border-bottom: 1px solid var(--line);
+      color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .filters { display: flex; gap: 4px; text-transform: none; letter-spacing: 0; }
+    .filters button { padding: 2px 7px; border-radius: 3px; color: var(--faint); }
+    .filters button.on { color: var(--ink); background: var(--hover); }
+    .run {
+      display: grid; grid-template-columns: 10px 1fr auto; gap: 8px 10px;
+      padding: 10px 12px 10px 10px; border: 0; border-bottom: 1px solid var(--line);
+      border-left: 2px solid transparent; text-align: left; width: 100%;
+    }
+    .run:hover { background: var(--hover); }
+    .run.sel { background: var(--hover); border-left-color: var(--accent); }
+    .run .query { grid-column: 2; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .run .meta { grid-column: 2; display: flex; gap: 8px; color: var(--faint); font-size: 11px; }
+    .run .dur { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--muted); font-size: 11px; }
+    .kind { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .kind.slack { color: var(--slack); }
+    .kind.mcp { color: var(--mcp); }
+    .inspector { display: flex; flex-direction: column; min-height: 0; }
+    .split {
+      flex: 1; min-height: 0; display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.9fr); border-bottom: 1px solid var(--line);
+    }
+    .split > div { min-width: 0; min-height: 0; overflow: auto; }
+    .split > div:last-child { border-left: 1px solid var(--line); }
+    .run-title { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+    .run-title h1 { margin: 0 0 8px; font-size: 16px; font-weight: 500; line-height: 1.35; }
+    .facts { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
+    .facts b { color: var(--ink); font-weight: 500; }
+    .stages { padding: 8px 12px 20px; }
+    .stage {
+      display: grid; grid-template-columns: 14px 92px 1fr 64px; gap: 8px; align-items: start;
+      width: 100%; padding: 8px; border-radius: 4px; color: inherit; text-align: left;
+    }
+    .stage:hover, .stage.open { background: var(--hover); }
+    .stage .name { color: var(--muted); }
+    .stage .label { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stage .ms { color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; }
+    .stage.child { padding-left: 28px; }
+    .payload {
+      margin: 0 12px 10px 34px; padding: 10px 12px; background: #0a0908;
+      border: 1px solid var(--line); border-radius: 4px; color: var(--muted);
+      font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; overflow: auto; max-height: 280px;
+    }
+    .reply { margin: 0 20px 20px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
+    .reply .k { margin-bottom: 8px; color: var(--faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .ctx-block { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .ctx-block h2 { margin: 0 0 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+    .hit, .file, .tool-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 5px 0; font-size: 12px; }
+    .hit .path, .file { color: var(--ink); }
+    .score, .n { color: var(--faint); font-variant-numeric: tabular-nums; }
+    .empty { padding: 40px 20px; color: var(--faint); text-align: center; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { padding: 10px 16px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+    .table th { color: var(--faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .hint { padding: 8px 16px; color: var(--faint); font-size: 11px; border-top: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">Benedict <span>debug</span></div>
+      <nav>
+        <button data-view="activity" class="active">Activity</button>
+        <button data-view="workspaces">Workspaces</button>
+      </nav>
+      <div class="status" id="status"></div>
+    </header>
+    <section id="activity" class="view workspace">
+      <div class="pane">
+        <div class="pane-head">
+          Activity
+          <div class="filters">
+            <button data-filter="all" class="on">All</button>
+            <button data-filter="slack">Slack</button>
+            <button data-filter="mcp">MCP</button>
+            <button data-filter="error">Errors</button>
+          </div>
+        </div>
+        <div id="run-list"></div>
+      </div>
+      <div class="pane inspector" id="inspector"></div>
+    </section>
+    <section id="workspaces" class="view hidden">
+      <table class="table">
+        <thead>
+          <tr><th>Channel</th><th>Repository</th><th>Last run</th><th>Notion</th></tr>
+        </thead>
+        <tbody id="workspace-rows"></tbody>
+      </table>
+      <div class="hint">Workspaces confirm onboarding. Debug a reply from Activity.</div>
+    </section>
+  </div>
+  <script>
+    let summaries = [];
+    let detail = null;
+    let filter = "all";
+    let selected = null;
+    let openStage = 0;
+    const $ = (id) => document.getElementById(id);
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+    function fmtMs(ms) {
+      if (ms == null) return "…";
+      return ms >= 1000 ? (ms / 1000).toFixed(2) + "s" : ms + "ms";
+    }
+    function ago(iso) {
+      if (!iso) return "";
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return "";
+      const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (s < 60) return s + "s";
+      if (s < 3600) return Math.round(s / 60) + "m";
+      if (s < 86400) return Math.round(s / 3600) + "h";
+      return Math.round(s / 86400) + "d";
+    }
+    function channelLabel(row) {
+      return row.channel_name || row.channel_id || "—";
+    }
+    function filtered() {
+      return summaries.filter((r) => {
+        if (filter === "slack") return r.source === "slack";
+        if (filter === "mcp") return r.source === "mcp";
+        if (filter === "error") return r.status === "error";
+        return true;
+      });
+    }
+    function pipClass(status) {
+      if (status === "error") return "err";
+      if (status === "running") return "live";
+      return "";
+    }
+
+    async function loadAll() {
+      const [statusRes, runsRes, wsRes] = await Promise.all([
+        fetch("/api/status"),
+        fetch("/api/runs?limit=80"),
+        fetch("/api/workspaces"),
+      ]);
+      const status = await statusRes.json();
+      const runs = await runsRes.json();
+      const workspaces = await wsRes.json();
+      summaries = runs.runs || [];
+      renderStatus(status);
+      renderWorkspaces(workspaces.workspaces || []);
+      if (!selected && summaries[0]) selected = summaries[0].id;
+      if (selected && !summaries.some((r) => r.id === selected) && summaries[0]) selected = summaries[0].id;
+      renderList();
+      if (selected) await loadDetail(selected, false);
+      else renderInspector();
+    }
+
+    async function loadDetail(id, resetStage) {
+      const res = await fetch("/api/runs/" + encodeURIComponent(id));
+      if (!res.ok) { detail = null; renderInspector(); return; }
+      detail = await res.json();
+      if (resetStage) {
+        const i = (detail.stages || []).findIndex((s) => ["search", "tool", "classify"].includes(s.name));
+        openStage = i >= 0 ? i : 0;
+      }
+      renderInspector();
+    }
+
+    function renderStatus(s) {
+      const c = s.components || {};
+      const chip = (key, label) => {
+        const item = c[key] || {};
+        const cls = item.ok ? "" : (key === "mcp" ? "dim" : "err");
+        const text = key === "mcp" && !item.ok ? "mcp idle" : label;
+        return `<span class="chip"><i class="pip ${cls}"></i> ${escapeHtml(text)}</span>`;
+      };
+      $("status").innerHTML = `
+        <span class="chip"><i class="pip live"></i> live</span>
+        ${chip("slack", "slack")}
+        ${chip("mcp", "mcp")}
+        ${chip("chroma", "chroma")}
+        <span class="mono">127.0.0.1:${s.port || 8765}</span>
+      `;
+    }
+
+    function renderList() {
+      const rows = filtered();
+      if (!rows.length) {
+        $("run-list").innerHTML = `<div class="empty">No runs yet. Mention Benedict in Slack.</div>`;
+        return;
+      }
+      $("run-list").innerHTML = rows.map((r) => `
+        <button class="run ${r.id === selected ? "sel" : ""}" data-id="${escapeHtml(r.id)}">
+          <i class="pip ${pipClass(r.status)}"></i>
+          <div class="query">${escapeHtml(r.query || "(empty)")}</div>
+          <div class="dur mono">${fmtMs(r.duration_ms)}</div>
+          <div class="meta">
+            <span class="kind ${escapeHtml(r.source || "")}">${escapeHtml(r.kind || "")}</span>
+            <span>#${escapeHtml(channelLabel(r))}</span>
+            <span>${ago(r.started_at)}</span>
+          </div>
+        </button>
+      `).join("");
+    }
+
+    function deriveContext(r) {
+      const hits = [];
+      const files = [];
+      const tools = [];
+      for (const s of r.stages || []) {
+        if (s.name === "search" && s.detail && Array.isArray(s.detail.hits)) hits.push(...s.detail.hits);
+        if (s.name === "context" && s.detail && Array.isArray(s.detail.files)) {
+          files.push(...s.detail.files.map((p) => [p, ""]));
+        }
+        if (s.name === "tool") {
+          const name = (s.detail && s.detail.name) || s.label || "tool";
+          tools.push([name, fmtMs(s.duration_ms), s.status || "ok"]);
+        }
+      }
+      return { hits, files, tools };
+    }
+
+    function renderInspector() {
+      const r = detail;
+      if (!r) {
+        $("inspector").innerHTML = `<div class="empty">Select a run from Activity.</div>`;
+        return;
+      }
+      const stages = (r.stages || []).map((s, i) => {
+        const open = i === openStage;
+        const payload = open
+          ? `<pre class="payload mono">${escapeHtml(s.detail ? JSON.stringify(s.detail, null, 2) : "No payload recorded for this stage.")}</pre>`
+          : "";
+        return `
+          <button class="stage ${open ? "open" : ""} ${s.child ? "child" : ""}" data-stage="${i}">
+            <i class="pip ${pipClass(s.status)}"></i>
+            <span class="name mono">${escapeHtml(s.name)}</span>
+            <span class="label">${escapeHtml(s.label || s.name)}</span>
+            <span class="ms mono">${fmtMs(s.duration_ms)}</span>
+          </button>
+          ${payload}
+        `;
+      }).join("");
+      const ctx = deriveContext(r);
+      const context = `
+        <div class="pane-head">Why this answer</div>
+        ${ctx.hits.length ? `<div class="ctx-block"><h2>Search</h2>${ctx.hits.map((h) => {
+          const path = Array.isArray(h) ? h[0] : h.file_path || h;
+          const score = Array.isArray(h) ? h[1] : h.score;
+          return `<div class="hit"><span class="path mono">${escapeHtml(path)}</span><span class="score mono">${score == null ? "" : Number(score).toFixed(2)}</span></div>`;
+        }).join("")}</div>` : ""}
+        ${ctx.files.length ? `<div class="ctx-block"><h2>In context</h2>${ctx.files.map(([p]) => `<div class="file"><span class="mono">${escapeHtml(p)}</span></div>`).join("")}</div>` : ""}
+        ${ctx.tools.length ? `<div class="ctx-block"><h2>Tools</h2>${ctx.tools.map(([n, t, st]) => `<div class="tool-row"><span class="mono">${escapeHtml(n)}</span><span class="n">${escapeHtml(t)} · ${escapeHtml(st)}</span></div>`).join("")}</div>` : ""}
+        ${!ctx.hits.length && !ctx.files.length && !ctx.tools.length ? `<div class="empty">No retrieval or tools on this run.</div>` : ""}
+      `;
+      $("inspector").innerHTML = `
+        <div class="run-title">
+          <h1>${escapeHtml(r.query || "(empty)")}</h1>
+          <div class="facts">
+            <span><b class="mono">${escapeHtml(r.id)}</b></span>
+            <span>${escapeHtml(r.kind)} · ${escapeHtml(r.source)}</span>
+            <span>#${escapeHtml(channelLabel(r))}</span>
+            <span class="mono">${escapeHtml(r.repo || "—")}</span>
+            <span class="mono">${escapeHtml(r.route || "")}</span>
+            <span>${fmtMs(r.duration_ms)}</span>
+            ${r.error ? `<span style="color:var(--err)">${escapeHtml(r.error)}</span>` : ""}
+          </div>
+        </div>
+        <div class="split">
+          <div><div class="pane-head">Pipeline</div><div class="stages">${stages || `<div class="empty">No stages yet.</div>`}</div></div>
+          <div>${context}</div>
+        </div>
+        <div class="reply"><div class="k">Reply</div>${escapeHtml(r.reply || (r.status === "running" ? "Still running…" : "(no reply)"))}</div>
+      `;
+    }
+
+    function renderWorkspaces(rows) {
+      if (!rows.length) {
+        $("workspace-rows").innerHTML = `<tr><td colspan="4" style="color:var(--faint)">No onboarded channels.</td></tr>`;
+        return;
+      }
+      $("workspace-rows").innerHTML = rows.map((w) => `
+        <tr>
+          <td>#${escapeHtml(w.channel_id)}${w.architect ? " · architect" : ""}</td>
+          <td class="mono">${escapeHtml(w.repository || "—")}</td>
+          <td>${escapeHtml(w.last_run ? ago(w.last_run) : "—")}</td>
+          <td>${w.notion ? "linked" : "—"}</td>
+        </tr>
+      `).join("");
+    }
+
+    document.addEventListener("click", (e) => {
+      const viewBtn = e.target.closest("[data-view]");
+      if (viewBtn) {
+        document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b === viewBtn));
+        $("activity").classList.toggle("hidden", viewBtn.dataset.view !== "activity");
+        $("workspaces").classList.toggle("hidden", viewBtn.dataset.view !== "workspaces");
+        return;
+      }
+      const f = e.target.closest("[data-filter]");
+      if (f) {
+        filter = f.dataset.filter;
+        document.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("on", b === f));
+        const rows = filtered();
+        if (!rows.some((r) => r.id === selected) && rows[0]) {
+          selected = rows[0].id;
+          loadDetail(selected, true);
+        }
+        renderList();
+        return;
+      }
+      const run = e.target.closest(".run");
+      if (run) {
+        selected = run.dataset.id;
+        renderList();
+        loadDetail(selected, true);
+        return;
+      }
+      const stage = e.target.closest(".stage");
+      if (stage) {
+        openStage = Number(stage.dataset.stage);
+        renderInspector();
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.target.matches("input, textarea")) return;
+      const rows = filtered();
+      const i = rows.findIndex((r) => r.id === selected);
+      if (e.key === "j" && rows[i + 1]) {
+        selected = rows[i + 1].id;
+        renderList();
+        loadDetail(selected, true);
+      }
+      if (e.key === "k" && rows[i - 1]) {
+        selected = rows[i - 1].id;
+        renderList();
+        loadDetail(selected, true);
+      }
+      if (e.key === "1") document.querySelector("[data-view=activity]").click();
+      if (e.key === "2") document.querySelector("[data-view=workspaces]").click();
+    });
+
+    loadAll().catch(() => {
+      $("run-list").innerHTML = `<div class="empty">Could not reach the operator API. Is Benedict running?</div>`;
+    });
+    setInterval(() => loadAll().catch(() => {}), 2000);
+  </script>
+</body>
+</html>

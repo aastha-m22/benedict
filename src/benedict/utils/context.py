@@ -5,9 +5,11 @@ Pure functions for building context from repository files using semantic search.
 
 import logging
 import re
+import time
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from benedict.protocols import RepoReader, SemanticIndexer
+from benedict.operator_ui.recorder import record_stage
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,8 @@ def build_context(
         Formatted context string
     """
     parts = []
+    context_files: List[str] = []
+    search_started = time.perf_counter()
 
     # Include recent actions if available
     if action_logger and workspace_path:
@@ -77,6 +81,7 @@ def build_context(
             # Try to read the requested file directly
             content = repo_reader.read_file(repo, requested_file)
             parts.append(f"# {requested_file}\n{content}")
+            context_files.append(requested_file)
             logger.info(f"Added directly requested file {requested_file} to context")
             # Still include other context, but prioritize the direct file read
         except FileNotFoundError:
@@ -88,6 +93,7 @@ def build_context(
     try:
         readme = repo_reader.read_file(repo, "README.md")
         parts.append(f"# README.md\n{readme}")
+        context_files.append("README.md")
         logger.debug(f"Added README.md to context for {repo}")
     except FileNotFoundError:
         logger.debug(f"No README.md found for {repo}")
@@ -117,6 +123,15 @@ def build_context(
                 workspace_path=workspace_path,
                 metadata_reader=metadata_reader,
             )
+            hits = []
+            for item in results[:8]:
+                hits.append([item.get("file_path"), round(float(item.get("score") or 0), 2)])
+            record_stage(
+                "search",
+                duration_ms=int((time.perf_counter() - search_started) * 1000),
+                label=f"{len(results)} hits",
+                detail={"query": question, "hits": hits},
+            )
 
             # Group results by file and get full file content
             seen_files = set()
@@ -135,6 +150,7 @@ def build_context(
                     content = repo_reader.read_file(repo, file_path)
                     content = truncate_file_content(content, max_lines=1000)
                     parts.append(f"# {file_path}\n{content}")
+                    context_files.append(file_path)
                     logger.debug(
                         f"Added {file_path} to context (semantic match, score: {result['score']:.2f})"
                     )
@@ -144,7 +160,16 @@ def build_context(
 
         except Exception as e:
             logger.warning(f"Error in semantic search, falling back to keyword matching: {e}")
+            record_stage(
+                "search",
+                status="error",
+                duration_ms=int((time.perf_counter() - search_started) * 1000),
+                label="search failed",
+                detail={"error": str(e)},
+            )
             # Fall through to keyword matching
+    else:
+        record_stage("search", status="skip", label="no indexer")
 
     # Fallback to keyword matching if semantic search not available or failed
     if not semantic_indexer or len(parts) == 1:  # Only README added
@@ -160,6 +185,7 @@ def build_context(
                         content = repo_reader.read_file(repo, file_path)
                         content = truncate_file_content(content, max_lines=1000)
                         parts.append(f"# {file_path}\n{content}")
+                        context_files.append(file_path)
                         logger.debug(f"Added {file_path} to context (keyword match)")
                     except Exception as e:
                         logger.warning(f"Error reading {file_path}: {e}")
@@ -169,6 +195,12 @@ def build_context(
 
     # Combine and truncate to fit token limit
     full_context = "\n\n".join(parts)
+    record_stage(
+        "context",
+        duration_ms=int((time.perf_counter() - search_started) * 1000),
+        label=f"{len(context_files)} files",
+        detail={"files": context_files},
+    )
     return truncate_to_tokens(full_context, max_tokens)
 
 

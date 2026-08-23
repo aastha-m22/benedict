@@ -37,6 +37,8 @@ state.watcher.json
 state.watcher.json.backup
 .chroma_db/
 .metadata.benedict
+runs.jsonl
+mcp.pid
 
 # Tooling caches
 .pytest_cache/
