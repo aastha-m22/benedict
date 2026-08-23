@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.3] - 2026-08-23
 
 ### Added
-- **Operator UI**: local debug console at `http://127.0.0.1:8765` (on by default). Slack and MCP writes go to `runs.jsonl`. Set `BENEDICT_OPERATOR_UI=0` to disable. Spec: [docs/OPERATOR_UI_DESIGN.md](docs/OPERATOR_UI_DESIGN.md). Architecture walkthrough: [plans/OPERATOR_UI_WALKTHROUGH.html](plans/OPERATOR_UI_WALKTHROUGH.html).
+- **Operator UI**: local debug console at `http://127.0.0.1:8765` (on by default). Slack and MCP writes go to `runs.jsonl`. Set `BENEDICT_OPERATOR_UI=0` to disable. Decision: [docs/adr/0001-local-operator-ui.md](docs/adr/0001-local-operator-ui.md). Spec: [docs/OPERATOR_UI_DESIGN.md](docs/OPERATOR_UI_DESIGN.md).
 
 ## [0.5.2] - 2026-08-18
 

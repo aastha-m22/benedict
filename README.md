@@ -187,7 +187,7 @@ python -m benedict.main
 
 You should see: `Bot is running! Press Ctrl+C to stop.` and `Operator UI http://127.0.0.1:8765`.
 
-Open that URL while the bot is running. Mention Benedict in Slack, then inspect the run. How it is put together: [plans/OPERATOR_UI_WALKTHROUGH.html](plans/OPERATOR_UI_WALKTHROUGH.html).
+Open that URL while the bot is running. Mention Benedict in Slack, then inspect the run. Decision: [docs/adr/0001-local-operator-ui.md](docs/adr/0001-local-operator-ui.md). Spec: [docs/OPERATOR_UI_DESIGN.md](docs/OPERATOR_UI_DESIGN.md).
 
 ### MCP server (Cursor / Claude Code)
 

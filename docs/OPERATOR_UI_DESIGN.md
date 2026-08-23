@@ -4,6 +4,8 @@ A local debug console for Benedict.
 
 One-sentence summary: Open a localhost page, pick a Slack mention or MCP call, and see the timed pipeline that produced the reply.
 
+Decisions: [ADR 0001](adr/0001-local-operator-ui.md).
+
 ## 1. Overview
 
 ### What
@@ -30,7 +32,7 @@ Use it while developing and dogfooding Benedict on your machine. Mention the bot
 
 ### Visual spec
 
-Interactive mock: [plans/OPERATOR_UI.html](../plans/OPERATOR_UI.html). Open the file in a browser. It is the UI contract.
+The live page is `src/benedict/operator_ui/static/index.html`. Layout, density, and copy in section 12 are the UI contract.
 
 ## 2. Non-Goals
 
@@ -90,7 +92,7 @@ Slack / MCP event
 
 1. **RunRecorder** — protocol + JSONL implementation. Agent, Slack handlers, and MCP service call it. Composition root (`main.py`, MCP server) injects it.
 2. **Status API** — read-only HTTP on `127.0.0.1:8765`. Serves the UI and JSON for status, runs, and workspaces.
-3. **Browser UI** — the mock in `plans/OPERATOR_UI.html`, served as static files. No SPA framework.
+3. **Browser UI** — `src/benedict/operator_ui/static/index.html`. No SPA framework.
 
 ### Layout
 
@@ -263,7 +265,7 @@ Ship in this order. Do not build the HTTP server before runs exist.
 1. **RunRecorder** — protocol, JSONL store, unit tests (write, read, truncate, failure isolation).
 2. **Instrument** — `slack_app` handlers, `RepoAgent.handle_*`, `run_tool_loop`, MCP service methods.
 3. **Status API** — stdlib or existing stack; prefer stdlib `http.server` or `aiohttp` if already justified. Avoid adding FastAPI unless something else needs it.
-4. **UI** — promote `plans/OPERATOR_UI.html` to `src/benedict/operator_ui/static/`, wire to `/api/*`.
+4. **UI** — serve `src/benedict/operator_ui/static/index.html` from `/`, wired to `/api/*`.
 5. **Docs** — README env vars, CHANGELOG.
 
 Done when: you can mention Benedict in Slack, open `http://127.0.0.1:8765`, and see that run’s stages, search hits, tool argv, and reply.
@@ -281,4 +283,4 @@ Principles:
 
 Keyboard: `j` / `k` move in Activity. `1` Activity, `2` Workspaces.
 
-The mock at [plans/OPERATOR_UI.html](../plans/OPERATOR_UI.html) is normative for layout, density, and copy.
+`src/benedict/operator_ui/static/index.html` is normative for layout, density, and copy.
