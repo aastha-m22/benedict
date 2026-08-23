@@ -269,7 +269,7 @@ Ship in this order. Do not build the HTTP server before runs exist.
 4. **UI** — serve `src/benedict/operator_ui/static/index.html` from `/`, wired to `/api/*`.
 5. **Docs** — README env vars, CHANGELOG.
 
-Done when: you can mention Benedict in Slack, open `http://127.0.0.1:8765`, and see that run’s stages, search hits, tool argv, and reply.
+Done when: you can mention Benedict in Slack, open `http://127.0.0.1:8765`, and see that run’s stages, search hits, tool argv, final prompt, and reply.
 
 ## 12. Visual design
 
