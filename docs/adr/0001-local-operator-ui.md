@@ -35,7 +35,7 @@ Issue [#22](https://github.com/mkarots/benedict/issues/22) asked for a thin oper
 
 ### What we get
 
-- Mention Benedict, open `http://127.0.0.1:8765`, and inspect that run within about two seconds (poll interval). The inspector shows search hits, files in context, tools, and the final prompt (`system` + `messages`) from the last `llm` stage.
+- Mention Benedict, open `http://127.0.0.1:8765`, and inspect that run within about two seconds (poll interval). The inspector shows search hits, files in context, tools, and the final prompt (`system` + `messages`) from the last `llm` stage. Pipeline stages are bordered cards; child tool calls nest in the parent `llm` card.
 - MCP writes the same JSONL when it shares `BENEDICT_DATA_DIR`. The Slack process serves the UI and reloads `runs.jsonl` when MCP appends. MCP writes `mcp.pid` for the header chip.
 
 ### What we give up
